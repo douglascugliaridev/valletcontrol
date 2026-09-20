@@ -16,10 +16,14 @@ COPY apps/api/package.json ./apps/api/
 COPY packages/shared/package.json ./packages/shared/
 
 # Install dependencies
-RUN pnpm install --frozen-lockfile --filter @valletcontrol/api...
+RUN pnpm install --frozen-lockfile
 
 # Copy source
-COPY . .
+COPY packages/shared ./packages/shared
+COPY apps/api ./apps/api
+
+# Build shared package first
+RUN pnpm --filter @valletcontrol/shared build
 
 # Build API
 RUN pnpm --filter @valletcontrol/api build
@@ -40,7 +44,7 @@ COPY apps/api/package.json ./apps/api/
 COPY packages/shared/package.json ./packages/shared/
 
 # Install production dependencies only
-RUN pnpm install --frozen-lockfile --prod --filter @valletcontrol/api...
+RUN pnpm install --frozen-lockfile --prod
 
 # Copy built files
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
@@ -56,4 +60,4 @@ EXPOSE 3001
 ENV NODE_ENV=production
 ENV API_PORT=3001
 
-CMD ["sh", "-c", "cd /app/apps/api && pnpm prisma:migrate && node dist/main.js"]
+CMD ["sh", "-c", "cd /app/apps/api && pnpm prisma:migrate deploy && node dist/main.js"]
