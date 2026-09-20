@@ -1,0 +1,114 @@
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+enum TransactionType {
+  RECEITA
+  DESPESA
+  DEVEDOR
+}
+
+enum Category {
+  CONTAS_FIXAS
+  OUTROS
+  RECEITA
+  DEVEDORES
+}
+
+enum PaymentMethod {
+  NUBANK
+  ITAUCARD
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  passwordHash String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  transactions Transaction[]
+  cards          Card[]
+  recurringRules RecurringRule[]
+
+  @@index([email])
+  @@map("users")
+}
+
+model Transaction {
+  id            String          @id @default(cuid())
+  ownerId       String
+  owner         User            @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  description   String
+  amountCents   Int
+  type          TransactionType
+  category      Category?
+  paymentMethod PaymentMethod?
+  cardId        String?
+  card          Card?           @relation(fields: [cardId], references: [id], onDelete: SetNull)
+  dueDate       DateTime?       @db.Date
+  month         Int
+  year          Int
+  isPaid        Boolean         @default(false)
+  recurringRuleId String?
+  recurringRule RecurringRule?   @relation(fields: [recurringRuleId], references: [id], onDelete: SetNull)
+  installmentGroupId String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@index([ownerId, year, month])
+  @@index([ownerId, dueDate])
+  @@index([installmentGroupId])
+  @@map("transactions")
+}
+
+model Card {
+  id        String   @id @default(cuid())
+  ownerId   String
+  owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name      String
+  brand     CardBrand
+  last4     String?
+  color     String?
+  logoUrl   String?
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  transactions Transaction[]
+
+  @@index([ownerId, name])
+  @@map("cards")
+}
+
+enum CardBrand {
+  NUBANK
+  ITAUCARD
+  OTHERS
+}
+
+model RecurringRule {
+  id           String   @id @default(cuid())
+  ownerId      String
+  owner        User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  description  String
+  amountCents  Int
+  type         TransactionType
+  category     Category
+  startMonth   Int
+  startYear    Int
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  transactions Transaction[]
+
+  @@index([ownerId, isActive])
+  @@map("recurring_rules")
+}

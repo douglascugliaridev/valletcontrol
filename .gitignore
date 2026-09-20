@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+coverage/
+.turbo/
+*.tsbuildinfo
+
+# Environment / Secrets
+.env
+.env.*
+!.env.example
+!.env.seed
+
+# Database
+*.db
+*.sqlite
+postgres-data/
+pgdata/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Uploads
+apps/api/uploads/
+
+# OS / Editor
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+
+# NestJS
+apps/api/prisma/migrations/dev.db# Local agent config
+.claude/
