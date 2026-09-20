@@ -14,7 +14,6 @@ RUN corepack enable && corepack prepare pnpm@latest --activate
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/api/package.json ./apps/api/
 COPY packages/shared/package.json ./packages/shared/
-COPY packages/config/package.json ./packages/config/
 
 # Install dependencies
 RUN pnpm install --frozen-lockfile --filter @valletcontrol/api...
@@ -39,7 +38,6 @@ RUN corepack enable && corepack prepare pnpm@latest --activate
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/api/package.json ./apps/api/
 COPY packages/shared/package.json ./packages/shared/
-COPY packages/config/package.json ./packages/config/
 
 # Install production dependencies only
 RUN pnpm install --frozen-lockfile --prod --filter @valletcontrol/api...
@@ -48,7 +46,6 @@ RUN pnpm install --frozen-lockfile --prod --filter @valletcontrol/api...
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
 COPY --from=builder /app/apps/api/prisma ./apps/api/prisma
 COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
-COPY --from=builder /app/packages/config/dist ./packages/config/dist
 
 # Create non-root user
 RUN addgroup -g 1001 -S nodejs && adduser -S nestjs -u 1001
