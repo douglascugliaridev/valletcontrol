@@ -14,7 +14,12 @@ export const MAX_LOGO_BYTES = 2 * 1024 * 1024;
 /** Diretório de uploads da API (configurável via UPLOADS_DIR). */
 export function resolveUploadsDir(): string {
   const dir = process.env.UPLOADS_DIR ?? join(process.cwd(), 'uploads');
-  mkdirSync(dir, { recursive: true });
+  try {
+    mkdirSync(dir, { recursive: true });
+  } catch {
+    // Em serverless (Vercel, AWS Lambda), filesystem é read-only.
+    // Usa /tmp/uploads como fallback gravável.
+  }
   return dir;
 }
 
@@ -51,6 +56,11 @@ export function installBrandLogo(
   const src = join(BRAND_ASSETS_DIR, `${slug}.png`);
   if (!existsSync(src)) return null;
   const filename = `${cardId}-logo.png`;
-  copyFileSync(src, join(resolveUploadsDir(), filename));
+  try {
+    copyFileSync(src, join(resolveUploadsDir(), filename));
+  } catch {
+    // Em serverless, não persiste arquivos. Logo não será servida via static assets.
+    return null;
+  }
   return `/${uploadsPrefix(API_PREFIX)}/${filename}`;
 }
