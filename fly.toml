@@ -1,33 +1,42 @@
-# fly.toml - Deploy config for valletcontrol-api
-app = "valletcontrol-api"
-primary_region = "gru"
+# fly.toml app configuration file generated for valletcontrol on 2026-09-20T20:33:06Z
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'valletcontrol'
+primary_region = 'gru'
 
 [build]
-  dockerfile = "apps/api/Dockerfile"
+  dockerfile = 'apps/api/Dockerfile'
+
+[deploy]
+  release_command = 'cd /app/apps/api && pnpm prisma:migrate deploy'
 
 [env]
-  NODE_ENV = "production"
-  API_PORT = "3001"
-  API_PREFIX = "api"
+  API_PORT = '3001'
+  API_PREFIX = 'api'
+  NODE_ENV = 'production'
 
 [http_service]
   internal_port = 3001
   force_https = true
-  auto_stop_machines = false
+  auto_stop_machines = 'off'
   auto_start_machines = true
   min_machines_running = 1
 
   [[http_service.checks]]
-    grace_period = "10s"
-    interval = "30s"
-    method = "GET"
-    path = "/api/health"
-    timeout = "5s"
+    interval = '30s'
+    timeout = '5s'
+    grace_period = '10s'
+    method = 'GET'
+    path = '/api/health'
 
-[metrics]
+[[vm]]
+  memory = '1gb'
+  cpu_kind = 'shared'
+  cpus = 1
+  memory_mb = 1024
+
+[[metrics]]
   port = 9091
-  path = "/metrics"
-
-# Run migrations on deploy
-[deploy]
-  release_command = "cd /app/apps/api && pnpm prisma:migrate deploy"
+  path = '/metrics'
