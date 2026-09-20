@@ -10,6 +10,26 @@ primary_region = "gru"
   API_PORT = "3001"
   API_PREFIX = "api"
 
+# Allocate IPv4 (required for first deploy)
+[[services]]
+  protocol = "tcp"
+  internal_port = 3001
+  processes = ["app"]
+
+  [[services.ports]]
+    port = 80
+    handlers = ["http"]
+    force_https = true
+
+  [[services.ports]]
+    port = 443
+    handlers = ["tls", "http"]
+
+  [[services.tcp_checks]]
+    grace_period = "10s"
+    interval = "30s"
+    timeout = "5s"
+
 [http_service]
   internal_port = 3001
   force_https = true
@@ -28,6 +48,6 @@ primary_region = "gru"
   port = 9091
   path = "/metrics"
 
-# Run migrations on deploy
+# Run migrations on deploy - use npx to avoid pnpm PATH issues
 [deploy]
-  release_command = "cd /app/apps/api && pnpm prisma:migrate deploy"
+  release_command = "cd /app/apps/api && npx prisma migrate deploy"
