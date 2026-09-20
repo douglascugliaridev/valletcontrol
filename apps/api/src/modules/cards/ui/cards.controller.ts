@@ -9,9 +9,11 @@ import {
   Param,
   Patch,
   Post,
+  Res,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { ConfigService } from '@nestjs/config';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { randomUUID } from 'node:crypto';
@@ -64,6 +66,31 @@ export class CardsController {
   @Get()
   async list(@CurrentUser() authUser: AuthenticatedUser): Promise<Card[]> {
     return this.listCards.execute({ ownerId: authUser.userId });
+  }
+
+  @Get('logos/:brand')
+  @HttpCode(HttpStatus.OK)
+  async getBrandLogo(
+    @Param('brand') brand: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const allowedBrands = ['nubank', 'itaucard', 'havan'] as const;
+    const normalizedBrand = brand.toLowerCase();
+    if (!allowedBrands.includes(normalizedBrand as typeof allowedBrands[number])) {
+      res.status(HttpStatus.NOT_FOUND).send('Brand not found');
+      return;
+    }
+    const { readFileSync, existsSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const filePath = join(process.cwd(), 'prisma', 'logos', `${normalizedBrand}.png`);
+    if (!existsSync(filePath)) {
+      res.status(HttpStatus.NOT_FOUND).send('Logo not found');
+      return;
+    }
+    const fileBuffer = readFileSync(filePath);
+    res.setHeader('Content-Type', 'image/png');
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    res.send(fileBuffer);
   }
 
   @Patch(':id')
