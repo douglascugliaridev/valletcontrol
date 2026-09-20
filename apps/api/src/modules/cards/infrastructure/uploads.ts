@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 /** MIME aceito para logos de cartão → extensão de arquivo. */
@@ -44,8 +44,8 @@ const BRAND_ASSETS_DIR = join(process.cwd(), 'prisma', 'logos');
 const API_PREFIX = process.env.API_PREFIX ?? 'api';
 
 /**
- * Se existir logo oficial da marca em prisma/logos, copia para uploads e
- * devolve a URL pública do arquivo. Retorna null se não houver asset.
+ * Retorna a URL pública da logo da marca via endpoint /api/cards/logos/:brand.
+ * Funciona em serverless (não copia arquivos).
  */
 export function installBrandLogo(
   cardId: string,
@@ -55,12 +55,5 @@ export function installBrandLogo(
   if (!slug) return null;
   const src = join(BRAND_ASSETS_DIR, `${slug}.png`);
   if (!existsSync(src)) return null;
-  const filename = `${cardId}-logo.png`;
-  try {
-    copyFileSync(src, join(resolveUploadsDir(), filename));
-  } catch {
-    // Em serverless, não persiste arquivos. Logo não será servida via static assets.
-    return null;
-  }
-  return `/${uploadsPrefix(API_PREFIX)}/${filename}`;
+  return `/${API_PREFIX}/cards/logos/${slug}`;
 }
