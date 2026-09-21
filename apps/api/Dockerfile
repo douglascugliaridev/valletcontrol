@@ -46,8 +46,8 @@ COPY packages/shared/package.json ./packages/shared/
 # Install production dependencies only
 RUN pnpm install --frozen-lockfile --prod
 
-# Ensure prisma CLI is available globally for release_command
-RUN npm install -g prisma
+# Ensure prisma CLI is available globally for release_command (match local version)
+RUN npm install -g prisma@7.10.0
 
 # Copy built files
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
