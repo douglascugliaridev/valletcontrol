@@ -63,4 +63,4 @@ EXPOSE 3001
 ENV NODE_ENV=production
 ENV API_PORT=3001
 
-CMD ["sh", "-c", "cd /app/apps/api && pnpm prisma:migrate deploy && node dist/main.js"]
+CMD ["sh", "-c", "cd /app/apps/api && node dist/main.js"]
