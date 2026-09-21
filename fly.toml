@@ -10,7 +10,7 @@ primary_region = 'gru'
   dockerfile = 'apps/api/Dockerfile'
 
 [deploy]
-  release_command = "sh -c 'cd /app/apps/api && npx prisma migrate deploy'"
+  release_command = "sh -c 'cd /app/apps/api && ./node_modules/.bin/prisma migrate deploy'"
 
 [env]
   API_PORT = '3001'
