@@ -7,9 +7,8 @@ import {
   useCreateCard,
   useDeleteCard,
   useUpdateCard,
-  useUploadCardLogo,
 } from '@/lib/hooks';
-import { ApiError, resolveAssetUrl } from '@/lib/api';
+import { ApiError } from '@/lib/api';
 import { CardLogo } from '@/components/card-logo';
 import {
   Badge,
@@ -23,8 +22,8 @@ import {
   Select,
   Spinner,
 } from '@/components/ui';
-import { CreditCard, Pencil, Plus, Trash2, Upload } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { CreditCard, Pencil, Plus, Trash2 } from 'lucide-react';
+import { useState } from 'react';
 import { cn } from '@/lib/cn';
 
 const NEW_CARD: CardDraft = {
@@ -58,13 +57,10 @@ export function CardsManager() {
   const createCard = useCreateCard();
   const updateCard = useUpdateCard();
   const deleteCard = useDeleteCard();
-  const uploadCardLogo = useUploadCardLogo();
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<CardEntity | null>(null);
   const [draft, setDraft] = useState<CardDraft>(NEW_CARD);
-  const [logoFile, setLogoFile] = useState<File | null>(null);
-  const [removeLogo, setRemoveLogo] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<CardEntity | null>(null);
 
@@ -72,8 +68,6 @@ export function CardsManager() {
     setFormError(null);
     setEditing(null);
     setDraft(NEW_CARD);
-    setLogoFile(null);
-    setRemoveLogo(false);
     setFormOpen(true);
   };
 
@@ -81,17 +75,10 @@ export function CardsManager() {
     setFormError(null);
     setEditing(card);
     setDraft(toDraft(card));
-    setLogoFile(null);
-    setRemoveLogo(false);
     setFormOpen(true);
   };
 
   const set = (patch: Partial<CardDraft>) => setDraft((d) => ({ ...d, ...patch }));
-
-  const previewSrc = useMemo(() => {
-    if (logoFile) return URL.createObjectURL(logoFile);
-    return editing?.logoUrl ? resolveAssetUrl(editing.logoUrl) : undefined;
-  }, [editing, logoFile]);
 
   const submit = async () => {
     setFormError(null);
@@ -108,16 +95,9 @@ export function CardsManager() {
     };
     try {
       if (editing) {
-        const patch = removeLogo ? { ...input, logoUrl: null } : input;
-        await updateCard.mutateAsync({ id: editing.id, patch });
-        if (logoFile) {
-          await uploadCardLogo.mutateAsync({ id: editing.id, file: logoFile });
-        }
+        await updateCard.mutateAsync({ id: editing.id, patch: input });
       } else {
-        const created = await createCard.mutateAsync(input);
-        if (logoFile) {
-          await uploadCardLogo.mutateAsync({ id: created.id, file: logoFile });
-        }
+        await createCard.mutateAsync(input);
       }
       setFormOpen(false);
     } catch (err) {
@@ -134,7 +114,7 @@ export function CardsManager() {
     }
   };
 
-  const saving = createCard.isPending || updateCard.isPending || uploadCardLogo.isPending;
+  const saving = createCard.isPending || updateCard.isPending;
 
   return (
     <Card>
@@ -267,54 +247,6 @@ export function CardsManager() {
               value={draft.color || '#512DA8'}
               onChange={(e) => set({ color: e.target.value })}
             />
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="card-logo">Logo do cartão</Label>
-            <div className="flex items-center gap-3">
-              <label
-                htmlFor="card-logo"
-                className="flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm hover:bg-muted"
-              >
-                <Upload className="size-4 text-muted-foreground" />
-                <span className="max-w-40 truncate">
-                  {logoFile ? logoFile.name : 'Escolher imagem'}
-                </span>
-                <input
-                  id="card-logo"
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp"
-                  className="sr-only"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0] ?? null;
-                    setLogoFile(file);
-                    if (file) setRemoveLogo(false);
-                  }}
-                />
-              </label>
-              <span className="flex size-10 shrink-0 items-center justify-center rounded-full border border-border">
-                {previewSrc ? (
-                  <CardLogo logoUrl={previewSrc} alt={draft.name ?? 'Cartão'} />
-                ) : (
-                  <CreditCard className="size-4 text-muted-foreground" />
-                )}
-              </span>
-            </div>
-            <p className="text-xs text-muted-foreground">PNG, JPG ou WebP, até 2 MB.</p>
-            {(logoFile ?? editing?.logoUrl) && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="w-fit"
-                onClick={() => {
-                  setLogoFile(null);
-                  setRemoveLogo(Boolean(editing?.logoUrl));
-                }}
-              >
-                Remover logo
-              </Button>
-            )}
           </div>
 
           <label className="flex items-center gap-2 text-sm">

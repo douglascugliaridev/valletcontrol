@@ -24,10 +24,6 @@ export class CreateCardDto implements CardInput {
   })
   color?: string | null;
 
-  @IsOptional()
-  @IsString()
-  @Length(1, 500, { message: 'Logo deve ter entre 1 e 500 caracteres.' })
-  logoUrl?: string | null;
 
   @Transform(toBool)
   @IsBoolean()

@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -10,31 +9,19 @@ import {
   Patch,
   Post,
   Res,
-  UploadedFile,
-  UseInterceptors,
 } from '@nestjs/common';
 import type { Response } from 'express';
-import { ConfigService } from '@nestjs/config';
-import { FileInterceptor } from '@nestjs/platform-express';
-import { randomUUID } from 'node:crypto';
-import { unlink, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
-import multer from 'multer';
 import type { Card, CardUpdate } from '@valletcontrol/shared';
 import type { AuthenticatedUser } from '../../../common/auth/decorators/current-user.decorator';
 import { CurrentUser } from '../../../common/auth/decorators/current-user.decorator';
+import { Public } from '../../../common/auth/decorators/public.decorator';
 import { CreateCardDto } from './dto/create-card.dto';
 import { UpdateCardDto } from './dto/update-card.dto';
 import { CreateCardUseCase } from '../application/use-cases/create-card.use-case';
 import { DeleteCardUseCase } from '../application/use-cases/delete-card.use-case';
 import { ListCardsUseCase } from '../application/use-cases/list-cards.use-case';
 import { UpdateCardUseCase } from '../application/use-cases/update-card.use-case';
-import {
-  ALLOWED_LOGO_MIMES,
-  MAX_LOGO_BYTES,
-  resolveUploadsDir,
-  uploadsPrefix,
-} from '../infrastructure/uploads';
+import { readBrandLogo } from '../infrastructure/uploads';
 
 /**
  * Controller REST de cartões — frame driver adapter (espelho do transactions).
@@ -47,7 +34,6 @@ export class CardsController {
     private readonly listCards: ListCardsUseCase,
     private readonly updateCard: UpdateCardUseCase,
     private readonly deleteCard: DeleteCardUseCase,
-    private readonly config: ConfigService,
   ) {}
 
   @Post()
@@ -57,7 +43,6 @@ export class CardsController {
       brand: dto.brand,
       last4: dto.last4 ?? null,
       color: dto.color ?? null,
-      logoUrl: dto.logoUrl ?? null,
       isDefault: dto.isDefault ?? false,
     };
     return this.createCard.execute({ ownerId: authUser.userId, input });
@@ -68,6 +53,7 @@ export class CardsController {
     return this.listCards.execute({ ownerId: authUser.userId });
   }
 
+  @Public()
   @Get('logos/:brand')
   @HttpCode(HttpStatus.OK)
   async getBrandLogo(
@@ -80,14 +66,11 @@ export class CardsController {
       res.status(HttpStatus.NOT_FOUND).send('Brand not found');
       return;
     }
-    const { readFileSync, existsSync } = await import('node:fs');
-    const { join } = await import('node:path');
-    const filePath = join(process.cwd(), 'prisma', 'logos', `${normalizedBrand}.png`);
-    if (!existsSync(filePath)) {
+    const fileBuffer = readBrandLogo(normalizedBrand as 'nubank' | 'itaucard');
+    if (!fileBuffer) {
       res.status(HttpStatus.NOT_FOUND).send('Logo not found');
       return;
     }
-    const fileBuffer = readFileSync(filePath);
     res.setHeader('Content-Type', 'image/png');
     res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
     res.send(fileBuffer);
@@ -104,45 +87,9 @@ export class CardsController {
       ...(dto.brand !== undefined && { brand: dto.brand }),
       ...('last4' in dto && { last4: dto.last4 ?? null }),
       ...('color' in dto && { color: dto.color ?? null }),
-      ...('logoUrl' in dto && { logoUrl: dto.logoUrl ?? null }),
       ...(dto.isDefault !== undefined && { isDefault: dto.isDefault }),
     };
     return this.updateCard.execute({ ownerId: authUser.userId, id, patch });
-  }
-
-  @Post(':id/logo')
-  @UseInterceptors(
-    FileInterceptor('file', {
-      storage: multer.memoryStorage(),
-      limits: { fileSize: MAX_LOGO_BYTES },
-    }),
-  )
-  async uploadLogo(
-    @CurrentUser() authUser: AuthenticatedUser,
-    @Param('id') id: string,
-    @UploadedFile() file: Express.Multer.File | undefined,
-  ): Promise<Card> {
-    if (!file) {
-      throw new BadRequestException('Envie um arquivo de imagem.');
-    }
-    const ext = ALLOWED_LOGO_MIMES[file.mimetype];
-    if (!ext) {
-      throw new BadRequestException('Formato inválido. Use PNG, JPG ou WebP.');
-    }
-    const filename = `${id}-${randomUUID()}.${ext}`;
-    const filePath = join(resolveUploadsDir(), filename);
-    await writeFile(filePath, file.buffer);
-    const prefix = uploadsPrefix(this.config.getOrThrow<string>('apiPrefix'));
-    try {
-      return await this.updateCard.execute({
-        ownerId: authUser.userId,
-        id,
-        patch: { logoUrl: `/${prefix}/${filename}` },
-      });
-    } catch (err) {
-      await unlink(filePath).catch(() => undefined);
-      throw err;
-    }
   }
 
   @Delete(':id')

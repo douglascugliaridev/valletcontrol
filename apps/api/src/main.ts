@@ -5,7 +5,6 @@ import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { GlobalExceptionFilter } from './common/exceptions/global-exception.filter';
-import { resolveUploadsDir, uploadsPrefix } from './modules/cards/infrastructure/uploads';
 
 /** Configura pipes/filtros/decorators globais da aplicação. */
 function configureApp(app: INestApplication): void {
@@ -28,11 +27,6 @@ async function bootstrap(): Promise<void> {
 
   const config = app.get(ConfigService);
   configureApp(app);
-
-  app.useStaticAssets(resolveUploadsDir(), {
-    prefix: `/${uploadsPrefix(config.getOrThrow<string>('apiPrefix'))}`,
-    setHeaders: (res) => res.setHeader('Access-Control-Allow-Origin', '*'),
-  });
 
   app.enableCors({
     origin: config.get<string[]>('cors.allowedOrigins'),

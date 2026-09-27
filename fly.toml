@@ -9,13 +9,14 @@ primary_region = 'gru'
 [build]
   dockerfile = 'apps/api/Dockerfile'
 
-# [deploy]
-#   release_command = "sh -c 'cd /app && prisma migrate deploy --schema ./apps/api/prisma/schema.prisma'"
+[deploy]
+  release_command = "sh -c 'cd /app/apps/api && prisma migrate deploy'"
 
 [env]
   API_PORT = '3001'
   API_PREFIX = 'api'
   NODE_ENV = 'production'
+  DATABASE_SSL_REJECT_UNAUTHORIZED = 'false'
 
 [http_service]
   internal_port = 3001

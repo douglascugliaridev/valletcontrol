@@ -42,3 +42,6 @@ apps/api/uploads/
 # NestJS
 apps/api/prisma/migrations/dev.db# Local agent config
 .claude/
+.vercel
+.env*
+imports/

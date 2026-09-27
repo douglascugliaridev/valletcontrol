@@ -15,6 +15,8 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/api/package.json ./apps/api/
 COPY packages/shared/package.json ./packages/shared/
 
+COPY packages/config ./packages/config
+
 # Install dependencies
 RUN pnpm install --frozen-lockfile
 
@@ -52,6 +54,7 @@ RUN npm install -g prisma@7.10.0
 # Copy built files
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
 COPY --from=builder /app/apps/api/prisma ./apps/api/prisma
+COPY --from=builder /app/apps/api/prisma.config.ts ./apps/api/prisma.config.ts
 COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
 
 # Create non-root user

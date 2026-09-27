@@ -63,16 +63,15 @@ A API usa **arquitetura hexagonal**: controller → use case → repositório Pr
 - Alterar regras também invalida o cache de transações.
 
 ### Cartões (Configurações)
-- CRUD de cartões: nome, bandeira (Nubank/Itaucard/Outros), últimos 4 dígitos, cor, logo (upload opcional), cartão padrão.
-- **Upload de logo**: PNG/JPG/WebP até 2 MB (`POST /cards/:id/logo`); arquivos servidos em `/api/uploads/*`.
-- **Logo automática**: ao criar cartão Nubank/Itaucard, a logo oficial é copiada automaticamente.
+- CRUD de cartões: nome, bandeira (Nubank/Itaucard/Outros), últimos 4 dígitos, cor e cartão padrão.
+- **Logo automática**: cartões Nubank/Itaucard recebem a URL do logo oficial no momento da criação.
 - Exibição: círculo com a logo ou com a cor do cartão; etiqueta `Meu Nubank •• 1234`; badge "Padrão".
 - Ao excluir cartão, as transações vinculadas perdem o cartão (FK `ON DELETE SET NULL`).
 
 ### Tema e responsividade
 - Dark mode automático (sistema) via next-themes, sobreposição por classe.
 - Layout responsivo: cards empilham no mobile; modal vira bottom-sheet.
-- Dev acessível pela LAN (`http://192.168.1.10:3000`) via `allowedDevOrigins` + rewrite de `/api/uploads`.
+- Dev acessível pela LAN (`http://192.168.1.10:3000`) via `allowedDevOrigins`.
 
 ## Endpoints da API
 
@@ -99,7 +98,7 @@ Prefixo global `/api`, autenticação Bearer (exceto os marcados `@Public()`).
 | POST | `/api/cards` | Cria cartão |
 | GET | `/api/cards` | Lista (padrão primeiro, depois por nome) |
 | PATCH | `/api/cards/:id` | Atualiza campos parciais |
-| POST | `/api/cards/:id/logo` | Upload de logo (`multipart/form-data`, campo `file`) |
+| GET | `/api/cards/logos/:brand` | Logo oficial da bandeira |
 | DELETE | `/api/cards/:id` | Remove (204) |
 
 ### Recurring rules
@@ -177,7 +176,6 @@ NEXT_PUBLIC_API_URL=http://192.168.1.10:3001/api
 
 - Web não lê o `.env` raiz: a URL da API vem de `NEXT_PUBLIC_API_URL` (em `apps/web/.env.local`; fallback `http://localhost:3001/api`).
 - CORS libera apenas `ALLOWED_ORIGINS` (lista separada por vírgula).
-- Uploads ficam em `apps/api/uploads/` (ou `UPLOADS_DIR`), servidos em `/api/uploads` com `Access-Control-Allow-Origin: *`.
 
 ## Como rodar
 

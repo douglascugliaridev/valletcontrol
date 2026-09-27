@@ -1,0 +1,6 @@
+{
+  "framework": "nestjs",
+  "installCommand": "pnpm install --filter @valletcontrol/api...",
+  "buildCommand": "pnpm --filter @valletcontrol/shared build && pnpm --filter @valletcontrol/api build && mkdir -p dist/prisma/logos && cp prisma/logos/*.png dist/prisma/logos/",
+  "outputDirectory": "dist"
+}

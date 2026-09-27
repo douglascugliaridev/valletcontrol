@@ -104,18 +104,6 @@ export function useUpdateCard() {
   });
 }
 
-export function useUploadCardLogo() {
-  const client = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, file }: { id: string; file: File }) => {
-      const body = new FormData();
-      body.append('file', file);
-      return api<Card>(`/cards/${id}/logo`, { method: 'POST', body });
-    },
-    onSuccess: () => client.invalidateQueries({ queryKey: cardsKey }),
-  });
-}
-
 export function useDeleteCard() {
   const client = useQueryClient();
   return useMutation({

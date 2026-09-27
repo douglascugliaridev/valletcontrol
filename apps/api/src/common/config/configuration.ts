@@ -7,6 +7,7 @@ export interface AppConfig {
   port: number;
   apiPrefix: string;
   databaseUrl: string;
+  databaseSslRejectUnauthorized: boolean | undefined;
   jwt: {
     secret: string;
     expiresIn: string;
@@ -44,9 +45,13 @@ function int(envName: string, fallback: number, name: string): number {
 export function loadConfig(): AppConfig {
   return {
     env: (process.env.NODE_ENV ?? 'development') as AppConfig['env'],
-    port: int('API_PORT', 3001, 'port'),
+    port: int('PORT', int('API_PORT', 3001, 'apiPort'), 'port'),
     apiPrefix: required('API_PREFIX') ?? 'api',
     databaseUrl: required('DATABASE_URL'),
+    databaseSslRejectUnauthorized:
+      process.env.DATABASE_SSL_REJECT_UNAUTHORIZED === undefined
+        ? undefined
+        : process.env.DATABASE_SSL_REJECT_UNAUTHORIZED === 'true',
     jwt: {
       secret: required('JWT_SECRET'),
       expiresIn: process.env.JWT_EXPIRES_IN ?? '7d',

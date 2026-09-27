@@ -3,11 +3,10 @@ import type { ErrorResponse } from '@valletcontrol/shared';
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/api';
 export const API_ORIGIN = API_URL.replace(/\/api\/?$/, '');
 
-/** Converte caminho relativo da API (ex.: "/api/uploads/x.png") em URL absoluta. */
+/** Converte caminho relativo da API em URL absoluta. */
 export function resolveAssetUrl(path: string | null | undefined): string | undefined {
   if (!path) return undefined;
   if (/^https?:\/\//i.test(path) || path.startsWith('data:')) return path;
-  if (path.startsWith('/api/uploads/')) return path;
   return `${API_ORIGIN}${path.startsWith('/') ? path : `/${path}`}`;
 }
 

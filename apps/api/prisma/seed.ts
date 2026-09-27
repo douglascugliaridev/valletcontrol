@@ -91,7 +91,7 @@ async function main() {
 
   for (const card of [nubankCard, itaucardCard]) {
     if (card.logoUrl) continue;
-    const logoUrl = installBrandLogo(card.id, card.brand);
+      const logoUrl = installBrandLogo(card.brand);
     if (logoUrl) {
       await prisma.card.update({ where: { id: card.id }, data: { logoUrl } });
     }

@@ -79,12 +79,21 @@ export class PrismaCardRepository implements CardRepositoryPort {
       where: { ownerId },
       orderBy: [{ isDefault: 'desc' }, { name: 'asc' }],
     });
-    return rows.map(toDomain);
+    return Promise.all(rows.map((row) => this.ensureBrandLogo(row))).then((cards) =>
+      cards.map(toDomain),
+    );
   }
 
   async findByIdAndOwner(id: string, ownerId: string): Promise<Card | null> {
     const row = await this.prisma.card.findFirst({ where: { id, ownerId } });
-    return row ? toDomain(row) : null;
+    return row ? toDomain(await this.ensureBrandLogo(row)) : null;
+  }
+
+  private async ensureBrandLogo(row: PrismaCardRow): Promise<PrismaCardRow> {
+    if (row.logoUrl) return row;
+    const logoUrl = installBrandLogo(row.brand);
+    if (!logoUrl) return row;
+    return this.prisma.card.update({ where: { id: row.id }, data: { logoUrl } });
   }
 
   async create(ownerId: string, input: CardInput): Promise<Card> {
@@ -92,7 +101,7 @@ export class PrismaCardRepository implements CardRepositoryPort {
       data: { ...toDbData(input), owner: { connect: { id: ownerId } } },
     });
     if (!row.logoUrl) {
-      const logoUrl = installBrandLogo(row.id, row.brand);
+      const logoUrl = installBrandLogo(row.brand);
       if (logoUrl) {
         const updated = await this.prisma.card.update({
           where: { id: row.id },
@@ -109,9 +118,16 @@ export class PrismaCardRepository implements CardRepositoryPort {
     if (!existing) {
       throw new NotFoundException('Cartão não encontrado.');
     }
+    const data = toDbPatch(patch);
+    const effectiveBrand = patch.brand ? CardBrandMapper.toDb(patch.brand) : existing.brand;
+    const effectiveLogoUrl = patch.logoUrl ?? existing.logoUrl;
+    if (!effectiveLogoUrl) {
+      const logoUrl = installBrandLogo(effectiveBrand);
+      if (logoUrl) data.logoUrl = logoUrl;
+    }
     const row = await this.prisma.card.update({
       where: { id },
-      data: toDbPatch(patch),
+      data,
     });
     return toDomain(row);
   }
