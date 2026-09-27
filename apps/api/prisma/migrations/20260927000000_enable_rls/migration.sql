@@ -14,6 +14,15 @@
 --     linhas (fail-closed). A `service_role` (service key) mantem acesso total.
 --   * INSERT em `users` fica bloqueado: o cadastro e feito pela API.
 --   * Idempotente: cada policy e precedida de DROP POLICY IF EXISTS.
+--
+-- Ressalva sobre `users.id`: hoje e um cuid (ex.: cmuev5o0a0000hnq283sr7qyo),
+-- e `auth.uid()` devolve uuid. Entao, com os ids atuais, o Data API sempre
+-- recebe zero linhas — que e o estado desejado, ja que este projeto nao usa
+-- o Data API. As policies comecam a valer linha a linha no dia em que a
+-- autenticacao migrar para o Supabase Auth (ids uuid), sem nenhuma alteracao
+-- de SQL. Se um dia o `sub` do JWT for um cuid em vez de uuid, `auth.uid()`
+-- estoura 22P02 em vez de negar; nesse caso trocar por um helper em text:
+--   current_setting('request.jwt.claim.sub', true)
 -- ============================================================================
 
 -- 1) Habilita RLS
@@ -37,7 +46,7 @@ BEGIN
         JOIN pg_namespace n ON n.oid = p.pronamespace
         WHERE n.nspname = 'auth' AND p.proname = 'uid'
     ) THEN
-        RAISE NOTICE 'Schema auth ausente (Postgres sem Supabase Auth): RLS habilitado sem policies; API nao afetada.';
+        RAISE NOTICE 'Schema auth ausente (Postgres sem Supabase Auth): RLS habilitado sem policies; API nao afetada. Se for preciso criar as policies depois, rode este arquivo novamente.';
         RETURN;
     END IF;
 
