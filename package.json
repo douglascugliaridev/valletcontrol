@@ -18,8 +18,6 @@
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "format": "turbo run format",
-    "db:up": "docker compose up -d",
-    "db:down": "docker compose down",
     "db:migrate": "pnpm --filter @valletcontrol/api prisma:migrate",
     "db:seed": "pnpm --filter @valletcontrol/api prisma:seed",
     "db:studio": "pnpm --filter @valletcontrol/api prisma:studio",

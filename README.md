@@ -21,7 +21,6 @@ packages/
   shared/  domínio (enums, labels, rules, recurrence, money) + contratos de API + schemas zod
   config/  tsconfig/eslint/prettier compartilhados
 prisma/    (apps/api/prisma) schema, migrações e seed
-docker-compose.yml  Postgres 16 em localhost:5433
 ```
 
 A API usa **arquitetura hexagonal**: controller → use case → repositório Prisma. Endpoints vivem em `apps/api/src/modules/*`; regras de negócio puras em `packages/shared/src/domain`.
@@ -146,7 +145,7 @@ Definidas em `packages/shared/src/domain/rules.ts` (`validateTransactionInput`) 
 
 ## Banco de dados
 
-PostgreSQL 16 via Docker (`docker-compose.yml`, host `localhost:5433`). Prisma 7 com driver adapter; client gerado em `apps/api/src/generated/prisma`.
+PostgreSQL 16 (host e porta vêm do `DATABASE_URL` no `.env`). Prisma 7 com driver adapter; client gerado em `apps/api/src/generated/prisma`.
 
 - **Models**: `users`, `transactions`, `cards`, `recurring_rules` (enums `TransactionType`, `Category`, `PaymentMethod`, `CardBrand`).
 - **Índices**: `transactions[ownerId, year, month]`, `transactions[ownerId, dueDate]`, `transactions[installmentGroupId]`, além de índices de e-mail, cartão e regra por dono.
@@ -183,16 +182,13 @@ NEXT_PUBLIC_API_URL=http://192.168.1.10:3001/api
 # 1. Instalar dependências
 pnpm install
 
-# 2. Subir o Postgres
-pnpm db:up
+# 2. Apontar DATABASE_URL, JWT_SECRET e NEXT_PUBLIC_API_URL no .env / apps/web/.env.local
 
-# 3. Apontar JWT_SECRET e NEXT_PUBLIC_API_URL no .env / apps/web/.env.local
-
-# 4. Migrar e popular (cria usuário demo + cartões + transações)
+# 3. Migrar e popular (cria usuário demo + cartões + transações)
 pnpm db:migrate
 pnpm db:seed
 
-# 5. Subir web + API (dev com watch)
+# 4. Subir web + API (dev com watch)
 pnpm dev
 ```
 
@@ -208,7 +204,6 @@ Usuário seed: `demo@valletcontrol.app` / `senha-segura-123`.
 | `pnpm build` | Build de todos os pacotes (turbo) |
 | `pnpm test` | Testes da API (jest) e do shared (vitest) |
 | `pnpm lint` / `pnpm typecheck` | Lint e typecheck de todos os pacotes |
-| `pnpm db:up` / `pnpm db:down` | Sobe/desce o Postgres (docker compose) |
 | `pnpm db:migrate` / `pnpm db:seed` / `pnpm db:studio` | Migra, popula e abre o Studio do Prisma |
 | `pnpm clean` | Limpa artefatos de build |
 
