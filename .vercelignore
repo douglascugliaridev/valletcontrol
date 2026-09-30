@@ -15,3 +15,5 @@ coverage
 .env.*
 .git
 .vercel
+imports
+.claude
