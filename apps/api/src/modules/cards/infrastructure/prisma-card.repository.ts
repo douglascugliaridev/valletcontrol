@@ -89,28 +89,28 @@ export class PrismaCardRepository implements CardRepositoryPort {
     return row ? toDomain(await this.ensureBrandLogo(row)) : null;
   }
 
+  /**
+   * Mantém o `logoUrl` do cartão coerente com a bandeira dele.
+   *
+   * Não basta preencher quando está vazio: cartões criados antes de `13a0ba3` guardam
+   * paths de `/api/uploads/...`, que dejaram de existir junto com o upload em runtime. O
+   * `if (row.logoUrl) return row` antigo confiava em qualquer valor, então esses cartões
+   * ficavam com imagem quebrada para sempre. Aqui qualquer divergência entre o path
+   * guardado e o da bandeira é reescrita — inclusive para `null` quando a bandeira não
+   * tem logo, o que devolve o cartão ao ícone genérico.
+   */
   private async ensureBrandLogo(row: PrismaCardRow): Promise<PrismaCardRow> {
-    if (row.logoUrl) return row;
-    const logoUrl = installBrandLogo(row.brand);
-    if (!logoUrl) return row;
-    return this.prisma.card.update({ where: { id: row.id }, data: { logoUrl } });
+    const expected = installBrandLogo(row.brand);
+    const current = row.logoUrl ?? null;
+    if (current === expected) return row;
+    return this.prisma.card.update({ where: { id: row.id }, data: { logoUrl: expected } });
   }
 
   async create(ownerId: string, input: CardInput): Promise<Card> {
     const row = await this.prisma.card.create({
       data: { ...toDbData(input), owner: { connect: { id: ownerId } } },
     });
-    if (!row.logoUrl) {
-      const logoUrl = installBrandLogo(row.brand);
-      if (logoUrl) {
-        const updated = await this.prisma.card.update({
-          where: { id: row.id },
-          data: { logoUrl },
-        });
-        return toDomain(updated);
-      }
-    }
-    return toDomain(row);
+    return toDomain(await this.ensureBrandLogo(row));
   }
 
   async updateByIdAndOwner(id: string, ownerId: string, patch: CardUpdate): Promise<Card> {
@@ -119,17 +119,11 @@ export class PrismaCardRepository implements CardRepositoryPort {
       throw new NotFoundException('Cartão não encontrado.');
     }
     const data = toDbPatch(patch);
-    const effectiveBrand = patch.brand ? CardBrandMapper.toDb(patch.brand) : existing.brand;
-    const effectiveLogoUrl = patch.logoUrl ?? existing.logoUrl;
-    if (!effectiveLogoUrl) {
-      const logoUrl = installBrandLogo(effectiveBrand);
-      if (logoUrl) data.logoUrl = logoUrl;
-    }
-    const row = await this.prisma.card.update({
-      where: { id },
-      data,
-    });
-    return toDomain(row);
+    // A logo é sempre derivada da bandeira, mesmo que o patch traga logoUrl: o
+    // upload em runtime não existe mais (13a0ba3), então o bundle é a única fonte.
+    delete data.logoUrl;
+    const row = await this.prisma.card.update({ where: { id }, data });
+    return toDomain(await this.ensureBrandLogo(row));
   }
 
   async deleteByIdAndOwner(id: string, ownerId: string): Promise<void> {

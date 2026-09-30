@@ -47,6 +47,7 @@ export class RecurringRulesController {
         category: dto.category,
         startMonth: dto.startMonth as Month,
         startYear: dto.startYear,
+        monthsAhead: dto.monthsAhead ?? null,
         isActive: dto.isActive ?? true,
       },
     });
@@ -68,6 +69,8 @@ export class RecurringRulesController {
       ...(dto.amountCents !== undefined && { amountCents: dto.amountCents }),
       ...(dto.type !== undefined && { type: dto.type }),
       ...(dto.category !== undefined && { category: dto.category }),
+      // `null` explícito volta a regra para "sem prazo"; ausente não mexe no horizonte.
+      ...(dto.monthsAhead !== undefined && { monthsAhead: dto.monthsAhead }),
       ...(dto.isActive !== undefined && { isActive: dto.isActive }),
     };
     return this.updateRule.execute({ ownerId: authUser.userId, id, patch });

@@ -1,7 +1,12 @@
 'use client';
 
 import type { Category, Month, RecurringRule, TransactionType } from '@walletcontrol/shared';
-import { CATEGORY_LABELS, MONTH_NAMES_LONG, TRANSACTION_TYPE_LABELS } from '@walletcontrol/shared';
+import {
+  CATEGORY_LABELS,
+  MAX_MONTHS_AHEAD,
+  MONTH_NAMES_LONG,
+  TRANSACTION_TYPE_LABELS,
+} from '@walletcontrol/shared';
 import {
   useCreateRecurringRule,
   useDeleteRecurringRule,
@@ -34,6 +39,7 @@ const NEW_RULE = (now: Date): RuleDraft => ({
   category: 'receita',
   startMonth: (now.getMonth() + 1) as Month,
   startYear: now.getFullYear(),
+  monthsAhead: '' as string,
   isActive: true,
 });
 
@@ -44,6 +50,8 @@ interface RuleDraft {
   category: Category;
   startMonth: number;
   startYear: number;
+  /** Texto cru do input; vazio = sem prazo. */
+  monthsAhead: string;
   isActive: boolean;
 }
 
@@ -55,6 +63,8 @@ function toDraft(rule: RecurringRule): RuleDraft {
     category: rule.category,
     startMonth: rule.startMonth,
     startYear: rule.startYear,
+    monthsAhead:
+      rule.monthsAhead === null || rule.monthsAhead === undefined ? '' : String(rule.monthsAhead),
     isActive: rule.isActive,
   };
 }
@@ -108,6 +118,20 @@ export function RecurringRulesManager() {
       setFormError('Informe um valor válido.');
       return;
     }
+    // Vazio = sem prazo (contas fixas não têm término). Preenchido, vira o horizonte.
+    let monthsAhead: number | null = null;
+    if (draft.monthsAhead.trim() !== '') {
+      const parsed = Number(draft.monthsAhead);
+      if (!Number.isInteger(parsed) || parsed < 1) {
+        setFormError('Meses à frente deve ser um número inteiro maior que zero.');
+        return;
+      }
+      if (parsed > MAX_MONTHS_AHEAD) {
+        setFormError(`Meses à frente máxima: ${MAX_MONTHS_AHEAD}.`);
+        return;
+      }
+      monthsAhead = parsed;
+    }
     const input = {
       description: draft.description.trim(),
       amountCents,
@@ -115,6 +139,7 @@ export function RecurringRulesManager() {
       category: draft.category,
       startMonth: draft.startMonth as Month,
       startYear: draft.startYear,
+      monthsAhead,
       isActive: draft.isActive,
     };
     try {
@@ -126,6 +151,7 @@ export function RecurringRulesManager() {
             amountCents: input.amountCents,
             type: input.type,
             category: input.category,
+            monthsAhead: input.monthsAhead,
             isActive: input.isActive,
           },
         });
@@ -186,6 +212,11 @@ export function RecurringRulesManager() {
                   <span>
                     desde {MONTH_NAMES_LONG[rule.startMonth - 1]} {rule.startYear}
                   </span>
+                  {rule.monthsAhead === null || rule.monthsAhead === undefined ? (
+                    <Badge tone="neutral">sem prazo</Badge>
+                  ) : (
+                    <Badge tone="neutral">{rule.monthsAhead}m</Badge>
+                  )}
                   {rule.isActive ? (
                     <Badge tone="success">Ativa</Badge>
                   ) : (
@@ -311,6 +342,24 @@ export function RecurringRulesManager() {
                 ))}
               </Select>
             </div>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="rule-months-ahead">Meses à frente</Label>
+            <Input
+              id="rule-months-ahead"
+              type="number"
+              min={1}
+              max={MAX_MONTHS_AHEAD}
+              placeholder="Sem prazo"
+              value={draft.monthsAhead}
+              onChange={(e) => set({ monthsAhead: e.target.value })}
+            />
+            <p className="text-xs text-muted-foreground">
+              {draft.monthsAhead.trim() === ''
+                ? 'Sem prazo: a conta fixa aparece todo mês, indefinidamente.'
+                : `Aparece por ${draft.monthsAhead.trim()} meses a partir do mês inicial.`}
+            </p>
           </div>
 
           <label className="flex items-center gap-2 text-sm">

@@ -1,6 +1,12 @@
 import type { Month } from './enums';
 import { MONTH_NAMES_LONG } from './enums';
 
+/**
+ * Teto de parcelas. É a única fonte da verdade: o `recurrenceSchema` (zod) e o
+ * formulário do front leem daqui, para o front nunca aceitar o que a API rejeita.
+ */
+export const MAX_INSTALLMENTS = 240;
+
 /** Instância (mês/ano) de uma parcela de recorrência. */
 export interface RecurrenceInstance {
   month: Month;

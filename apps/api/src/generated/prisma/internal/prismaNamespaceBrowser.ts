@@ -132,6 +132,7 @@ export const RecurringRuleScalarFieldEnum = {
   category: 'category',
   startMonth: 'startMonth',
   startYear: 'startYear',
+  monthsAhead: 'monthsAhead',
   isActive: 'isActive',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'

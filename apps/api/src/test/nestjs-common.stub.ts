@@ -21,3 +21,25 @@ export const Param = () => noopDecorator;
 export const Query = () => noopDecorator;
 export const Headers = () => noopDecorator;
 export const HttpCode = () => noopDecorator;
+
+/** Exceções do Nest usam `code`/`status`; aqui só o mensaje importa para o assert. */
+export class NotFoundException extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'NotFoundException';
+  }
+}
+
+export class BadRequestException extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'BadRequestException';
+  }
+}
+
+export class UnauthorizedException extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'UnauthorizedException';
+  }
+}

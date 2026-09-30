@@ -10,15 +10,17 @@ interface CardLogoProps {
   alt: string;
   className?: string;
   size?: number;
+  /** Ícone exibido quando não há logo ou quando a imagem falha ao carregar. */
+  fallback?: React.ReactNode;
 }
 
 /** Espaço extra (px) do chip branco no dark mode — dá respiro à logo. */
 const CHIP_PAD = 2;
 
-export function CardLogo({ logoUrl, alt, className, size = 20 }: CardLogoProps) {
+export function CardLogo({ logoUrl, alt, className, size = 20, fallback }: CardLogoProps) {
   const [broken, setBroken] = useState(false);
   const src = logoUrl && !broken ? resolveAssetUrl(logoUrl) : undefined;
-  if (!src) return null;
+  if (!src) return <>{fallback ?? null}</>;
   return (
     <span
       className={cn(

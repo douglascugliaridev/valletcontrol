@@ -18,7 +18,12 @@ import {
   ValidatorConstraint,
   ValidatorConstraintInterface,
 } from 'class-validator';
-import { CATEGORIES, PAYMENT_METHODS, TRANSACTION_TYPES } from '@walletcontrol/shared';
+import {
+  CATEGORIES,
+  MAX_INSTALLMENTS,
+  PAYMENT_METHODS,
+  TRANSACTION_TYPES,
+} from '@walletcontrol/shared';
 import type {
   Category,
   Month,
@@ -49,13 +54,13 @@ class StartFromWithinInstallments implements ValidatorConstraintInterface {
 export class RecurrenceDto {
   @IsInt({ message: 'Quantidade de parcelas deve ser inteira.' })
   @Min(1, { message: 'Parcelas mínimas: 1.' })
-  @Max(240, { message: 'Parcelas máximas: 240.' })
+  @Max(MAX_INSTALLMENTS, { message: `Parcelas máximas: ${MAX_INSTALLMENTS}.` })
   installments!: number;
 
   @IsOptional()
   @IsInt({ message: 'Parcela inicial deve ser inteira.' })
   @Min(1, { message: 'Parcela inicial mínima: 1.' })
-  @Max(240, { message: 'Parcela inicial máxima: 240.' })
+  @Max(MAX_INSTALLMENTS, { message: `Parcela inicial máxima: ${MAX_INSTALLMENTS}.` })
   @Validate(StartFromWithinInstallments)
   startFrom?: number;
 }

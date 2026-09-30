@@ -24,6 +24,8 @@ export class CreateRecurringRuleUseCase {
       category: input.category,
       startMonth: input.startMonth,
       startYear: input.startYear,
+      // `null`/ausente = sem prazo, que é o padrão das contas fixas.
+      monthsAhead: input.monthsAhead ?? null,
       isActive: input.isActive ?? true,
     });
   }

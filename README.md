@@ -316,17 +316,18 @@ Três decisões de modelagem merecem destaque:
 
 **`RecurringRule`** → `recurring_rules`
 
-| Campo         | Tipo              | Observação                         |
-| ------------- | ----------------- | ---------------------------------- |
-| `id`          | `String`          | `cuid()`                           |
-| `ownerId`     | `String`          | FK CASCADE                         |
-| `description` | `String`          |                                    |
-| `amountCents` | `Int`             | centavos `> 0`                     |
-| `type`        | `TransactionType` |                                    |
-| `category`    | `Category`        | **obrigatório**                    |
-| `startMonth`  | `Int`             | 1–12 — **imutável após a criação** |
-| `startYear`   | `Int`             | **imutável após a criação**        |
-| `isActive`    | `Boolean`         | `@default(true)`                   |
+| Campo         | Tipo              | Observação                                             |
+| ------------- | ----------------- | ------------------------------------------------------ |
+| `id`          | `String`          | `cuid()`                                               |
+| `ownerId`     | `String`          | FK CASCADE                                             |
+| `description` | `String`          |                                                        |
+| `amountCents` | `Int`             | centavos `> 0`                                         |
+| `type`        | `TransactionType` |                                                        |
+| `category`    | `Category`        | **obrigatório**                                        |
+| `startMonth`  | `Int`             | 1–12 — **imutável após a criação**                     |
+| `startYear`   | `Int`             | **imutável após a criação**                            |
+| `monthsAhead` | `Int?`            | `null` = sem prazo (ver [6.9](#69-regras-recorrentes)) |
+| `isActive`    | `Boolean`         | `@default(true)`                                       |
 
 Índice: `@@index([ownerId, isActive])`. Listagem ordena por
 `isActive desc, startYear asc, startMonth asc`.
@@ -489,6 +490,12 @@ Um tipo desconhecido em tempo de execução lança `Tipo de transação desconhe
 Ao criar um lançamento com mais de uma parcela, a API **materializa N transações reais**
 (no plural, no mesmo request) — não há linha "parcelado" pendente.
 
+**Quantidade de parcelas.** O teto é `MAX_INSTALLMENTS = 240` (20 anos), e não há mais
+limite artificial de 12. Esse número é a fonte única da verdade: o `recurrenceSchema` (zod),
+o `RecurrenceDto` da API e o `<Input max>` do formulário leem a mesma constante, de modo que
+o front nunca aceita um valor que a API rejeitaria. A regra pura `expandRecurrence` não
+impõe teto — a validação fica nas bordas.
+
 **Expansão.** `expandRecurrence(config)` em `domain/recurrence.ts`:
 
 ```
@@ -573,10 +580,25 @@ shouldMaterializeRule(rule, month, year):
   se !rule.isActive                              → false
   startsAfter = year > rule.startYear
             || (year === rule.startYear && month >= rule.startMonth)
-  → startsAfter
+  se !startsAfter                                → false
+  se rule.monthsAhead é null                     → true     (sem prazo)
+  end = addMonths(startMonth, startYear, monthsAhead - 1)
+  → year < end.year || (year === end.year && month <= end.month)
 ```
 
-Não há data de término: uma regra ativa vale de `startMonth/startYear` em diante.
+**Horizonte (`monthsAhead`).** Por padrão a regra **não tem prazo**: `monthsAhead` é
+`null` e ela vale de `startMonth/startYear` em diante, indefinidamente. É o certo para a
+maioria das contas fixas (aluguel, energia, internet), que não têm data de término.
+
+Quando preenchido, `monthsAhead` limita a regra aos próximos N meses **contando o mês
+inicial**: `1` gera só o mês de início, `12` fecha um ano exato. A aritmética passa por
+`addMonths`, então a virada de ano é automática (início em novembro com `monthsAhead: 4`
+cobre nov, dez, jan e fev). O teto é `MAX_MONTHS_AHEAD = 600`, lido tanto pelo DTO da API
+quanto pelo formulário, para o front nunca aceitar o que a API rejeita.
+
+A coluna é nullable de propósito: as regras já existentes ficam com `null` e **não mudam
+de comportamento** com esta migração. O campo é editável depois (`PATCH` com
+`monthsAhead` muda o horizonte; `null` explícito volta para "sem prazo").
 
 ```
 coveredByRule(transactions, ruleId, month, year):
@@ -621,23 +643,33 @@ transações; ele é apenas referenciado.
 **Normalização no create/update:** `name.trim()`, `last4?.trim() ?? null`,
 `color?.trim() ?? null`, `logoUrl?.trim() ?? null`, `isDefault ?? false`.
 
-**Logo por bandeira (lazy-install).** O arquivo da bandeira é lido do bundle
+**Logo por bandeira (derivada, sempre coerente).** O arquivo da bandeira é lido do bundle
 (`prisma/logos/{nubank,itaucard}.png`, com fallback para `apps/api/dist/prisma/logos/`
 no layout Vercel) e a URL pública `/{API_PREFIX}/cards/logos/{brand}` é gravada em
-`logoUrl`. A instalação acontece:
+`logoUrl`. A regra é: **`logoUrl` é sempre o caminho derivado da bandeira atual do cartão**,
+verificado por `ensureBrandLogo` na criação, na leitura (`findByIdAndOwner`/`findAllByOwner`)
+e no update. Qualquer divergência é reescrita e persistida.
 
-- na criação do cartão, se `logoUrl` não vier informado;
-- **preenchimento preguiçoso** em `findByIdAndOwner` e `findAllByOwner`, se um cartão
-  antigo (ou criado fora do app) ainda não tem logo — a correção é persistida;
-- no update, se a bandeira efetiva ficar sem logo.
+Isso importa porque cartões criados antes de `13a0ba3` guardavam
+`/api/uploads/{uuid}.png`, caminhos do upload em runtime que **não existem mais** (não há
+rota `/api/uploads`, e o `uploads/` saiu do versionamento). A versão anterior só preenchia
+`logoUrl` quando estava vazio (`if (row.logoUrl) return row`), então um cartão com path
+legado ficava com imagem quebrada para sempre — era a causa de a logo de um cartão não
+bater com a bandeira. Como o upload em runtime deixou de ser um caminho válido, o `PATCH`
+descarta `logoUrl` do patch e deixa `ensureBrandLogo` decidir.
 
-O endpoint serve o PNG com `Cache-Control: public, max-age=31536000, immutable`.
+O endpoint serve o PNG com `Cache-Control: public, max-age=31536000, immutable`, e
+`CardLogo` cai no ícone genérico quando a imagem falha ao carregar — antes ele devolvia
+`null` e deixava um círculo vazio, porque quem decidia o fallback testava o `logoUrl`
+(verdadeiro mesmo com arquivo morto) em vez do carregamento.
+
 `havan.png` existe no diretório mas **não** é resolvido por `readBrandLogo` (só
 `nubank` e `itaucard` são), então `GET /cards/logos/havan` responde 404 — o arquivo está
 versionado como reserva.
 
 **Bandeira `OTHERS` não tem logo** e, por [6.4](#64-coerência-entre-método-de-pagamento-e-bandeira),
-não pode ser usada como `paymentMethod` de devedor.
+não pode ser usada como `paymentMethod` de devedor. `ensureBrandLogo` grava `null` nesse
+caso, o que devolve o cartão ao ícone genérico.
 
 ### 6.11 Isolamento por usuário
 
@@ -898,7 +930,7 @@ feedback de UX e não revela nada (a pessoa acabou de digitar o e-mail).
 Há **duas camadas** de isolamento, independentes.
 
 **Camada 1 — aplicação (ativa).** Todo repository recebe `ownerId` do JWT e o inclui no
-`where`. É o que está em produção e o que os 49 testes da API exercitam.
+`where`. É o que está em produção e o que os 54 testes da API exercitam.
 
 **Camada 2 — RLS no Postgres** (migration `20260927000000_enable_rls`). Habilita Row
 Level Security em `users`, `transactions`, `cards` e `recurring_rules` e cria policies
@@ -1240,7 +1272,7 @@ verdade, conecte a partir do host.
 > **A `DATABASE_URL` da Vercel é uma Secret cifrada** e este repositório não tem acesso ao
 > valor em claro. Se o banco de produção também se chamar `valletcontrol`, renomeá-lo exige
 > o valor atual dessa variável e acesso de superusuário ao servidor — ver
-> [13.4](#134-divergência-de-migrações-conhecida).
+> [13.4](#134-migrações-aplicadas).
 
 ### 13.3 CORS
 
@@ -1248,31 +1280,23 @@ verdade, conecte a partir do host.
 Para acesso pela rede local, inclua o IP da máquina na lista
 (ex.: `http://192.168.1.18:3000`).
 
-### 13.4 Divergência de migrações conhecida
+### 13.4 Migrações aplicadas
 
-`pnpm --filter @walletcontrol/api exec prisma migrate status` acusa duas migrações do
-repositório como **não aplicadas** no Postgres local:
+A divergência que existia aqui foi resolvida: `prisma migrate status` responde
+**“Database schema is up to date!”**. As três migrações que faltavam foram aplicadas com
+`prisma migrate deploy`:
 
-| Migração                    | Situação no banco local         |
-| --------------------------- | ------------------------------- |
-| `20200101000000_baseline`   | ausente em `_prisma_migrations` |
-| `20260927000000_enable_rls` | ausente em `_prisma_migrations` |
+| Migração                                         | Observação                                                       |
+| ------------------------------------------------ | ---------------------------------------------------------------- |
+| `20200101000000_baseline`                        | marcador, só executa `SELECT 1;`                                 |
+| `20260927000000_enable_rls`                      | idempotente; cria policies apenas se o schema `auth` existir     |
+| `20260930120000_add_recurring_rule_months_ahead` | `ALTER TABLE ... ADD COLUMN IF NOT EXISTS "monthsAhead" INTEGER` |
 
-As migrações que **de fato** criaram o schema (`20260919165908_init` em diante) estão
-registradas e finalizadas. As duas acima chegaram ao repositório depois, então o banco
-local nunca as rodou.
-
-Consequências práticas:
-
-- Como a role `walletcontrol` é **superusuário**, ela ignora RLS, e o app funciona local
-  mesmo com `20260927000000_enable_rls` pendente. Em um role comum a falta de RLS seria um
-  problema de isolamento, não de compatibilidade.
-- **Não rode `prisma migrate dev` para "limpar" isso**: ele tentará criar o schema da
-  `baseline` sobre tabelas que já existem. Resolver é decisão de dados, não de rename —
-  em geral com `prisma migrate resolve --applied` ou marcando as migrações à mão após
-  conferir o schema.
-
-Este estado é anterior ao rename e não tem relação com ele.
+`migrate deploy` é o caminho seguro aqui, e não `migrate dev`: o `dev` reconstrói o banco
+inteiro a partir do schema e perderia dados. Vale notar que `20260927000000_enable_rls` só
+cria policies se o schema `auth` existir (Supabase Auth); no Postgres local ele apenas
+habilita RLS, sem policies, e a API segue funcionando porque a role `walletcontrol` é
+superusuário (superusuários ignoram RLS).
 
 ---
 
@@ -1410,24 +1434,25 @@ Estado atual: **4/4 tarefas** de `build`, `test`, `lint` e `typecheck` passando.
 
 **67 testes no total, todos passando.**
 
-### 16.1 API — Jest, 7 suítes / 49 testes
+### 16.1 API — Jest, 8 suítes / 54 testes
 
-| Suíte                                  | Testes | Cobre                                                                                                                                                                                                                                |
-| -------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `create-transactions.use-case.spec.ts` | 16     | validação de negócio ponta a ponta do create, escopo por `ownerId`, expansão de recorrência (incluindo `startFrom`), bucket cartão-vs-categoria, coerência método/bandeira, cartão de outro dono, atribuição de `installmentGroupId` |
-| `update-transaction.use-case.spec.ts`  | 12     | update individual e em série, `NotFound` para transação de outro dono, propagação mantendo `month`/`year`/`isPaid` individuais, rejeição de série inválida antes de propagar, fallback para update individual                        |
-| `register.use-case.spec.ts`            | 5      | normalização de e-mail, emissão de token, `Conflict` sem chamar `create`, login remove o hash, **anti-enumeração** (mesma mensagem para usuário inexistente)                                                                         |
-| `scrypt-password-hasher.spec.ts`       | 5      | formato `scrypt$salt$key`, verificação correta/incorreta, rejeição de formato malformado, salts distintos, comparação em tempo constante                                                                                             |
-| `transaction.dto.spec.ts`              | 4      | `toTransactionUpdate` — o mapeamento de patch e a proteção contra `null` acidental (ver [7.4](#74-transactions--apitransactions))                                                                                                    |
-| `delete-transaction.use-case.spec.ts`  | 4      | escopo `one` vs `series`, transação sem grupo                                                                                                                                                                                        |
-| `list-monthly-report.use-case.spec.ts` | 3      | injeção de regras no resumo, `coveredByRule` (idempotência), filtros aplicados                                                                                                                                                       |
+| Suíte                                     | Testes | Cobre                                                                                                                                                                                                                                |
+| ----------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `create-transactions.use-case.spec.ts`    | 16     | validação de negócio ponta a ponta do create, escopo por `ownerId`, expansão de recorrência (incluindo `startFrom`), bucket cartão-vs-categoria, coerência método/bandeira, cartão de outro dono, atribuição de `installmentGroupId` |
+| `update-transaction.use-case.spec.ts`     | 12     | update individual e em série, `NotFound` para transação de outro dono, propagação mantendo `month`/`year`/`isPaid` individuais, rejeição de série inválida antes de propagar, fallback para update individual                        |
+| `register.use-case.spec.ts`               | 5      | normalização de e-mail, emissão de token, `Conflict` sem chamar `create`, login remove o hash, **anti-enumeração** (mesma mensagem para usuário inexistente)                                                                         |
+| `scrypt-password-hasher.spec.ts`          | 5      | formato `scrypt$salt$key`, verificação correta/incorreta, rejeição de formato malformado, salts distintos, comparação em tempo constante                                                                                             |
+| `transaction.dto.spec.ts`                 | 4      | `toTransactionUpdate` — o mapeamento de patch e a proteção contra `null` acidental (ver [7.4](#74-transactions--apitransactions))                                                                                                    |
+| `delete-transaction.use-case.spec.ts`     | 4      | escopo `one` vs `series`, transação sem grupo                                                                                                                                                                                        |
+| `list-monthly-report.use-case.spec.ts`    | 3      | injeção de regras no resumo, `coveredByRule` (idempotência), filtros aplicados                                                                                                                                                       |
+| `recurring-rule-horizon.use-case.spec.ts` | 5      | `monthsAhead` repassado no create, ausente tratado como "sem prazo", `PATCH` com valor e com `null`, `404` para regra de outro dono                                                                                                  |
 
 Os specs usam mocks dos ports e as fixtures de `apps/api/src/test/`
 (`card.fixtures.ts`, `transaction.fixtures.ts`) — nenhum toca banco real.
 
-### 16.2 Domínio — Vitest, 1 arquivo / 18 testes
+### 16.2 Domínio — Vitest, 2 arquivos / 25 testes
 
-`packages/shared/src/domain/rules.spec.ts`, em três blocos:
+`packages/shared/src/domain/rules.spec.ts` (18 testes), em três blocos:
 
 - `validateTransactionInput` — 12 casos, um por regra de [6.3](#63-validação-de-transação),
   verificando **o `DomainErrorCode` exato**, não só que lança;
@@ -1436,6 +1461,12 @@ Os specs usam mocks dos ports e as fixtures de `apps/api/src/test/`
 - `validateCardPaymentConsistency` — 5 casos: métodos correspondentes, métodos cruzados,
   bandeira `outros`, e as duas tolerâncias (sem método / sem cartão).
 
+`packages/shared/src/domain/recurring-rule.spec.ts` (7 testes) fixa a semântica de
+`shouldMaterializeRule` de [6.9](#69-regras-recorrentes): sem prazo gera de `startMonth`
+em diante; `monthsAhead: 1` gera só o inicial; `3` conta o inicial e para no terceiro;
+`12` fecha um ano exato; a virada de novembro→fevereiro; e regra inativa nunca gera, mesmo
+dentro do horizonte.
+
 O front não tem suíte de testes: `pnpm test` roda `tsc --noEmit` no pacote web, e a
 configuração do Jest existe mas não há arquivo `*.test.*`/`*.spec.*` no app.
 
@@ -1443,7 +1474,7 @@ configuração do Jest existe mas não há arquivo `*.test.*`/`*.spec.*` no app.
 
 ## 17. Gaps conhecidos
 
-Registrados para não surprised quem for mexer no código:
+Registrados para não surpreender quem for mexer no código:
 
 1. **Divergência de faixa de ano.** A regra pura aceita `1900–2200`; o Zod
    (`yearSchema`) e os DTOs aceitam `2000–2200`. Um ano entre 1900 e 1999 passaria pelo
@@ -1456,9 +1487,10 @@ Registrados para não surprised quem for mexer no código:
    `type × category` além do caso `devedor × receita`, nem `category: null` fora de
    "despesa com cartão". A fonte da verdade é `validateTransactionInput` no servidor; o
    Zod é a camada de feedback rápido, não a garantia.
-4. **`transactionInputSchema` permite `isPaid` default `false`**, e `recurrenceSchema`
-   limita a 240 parcelas, mas o front limita a 12 e a regra pura não impõe teto. Três
-   limites diferentes para a mesma coisa.
+4. **`transactionInputSchema` permite `isPaid` default `false`**. O descasamento de limites
+   de parcelas que existia aqui foi resolvido: o teto de 240 era hardcoded em três lugares
+   e o front ainda barrava em 12. Agora `MAX_INSTALLMENTS` é a fonte única, lida pelo
+   `recurrenceSchema` (zod), pelo `RecurrenceDto` e pelo formulário.
 5. **`isDefault` do cartão nunca é lido.** O checkbox em Configurações diz "selecionado
    por padrão no form de transação", mas `TransactionForm` inicia com `cardId: ''` e
    não consulta `card.isDefault`. Ou o form passa a respeitar a flag, ou o texto do

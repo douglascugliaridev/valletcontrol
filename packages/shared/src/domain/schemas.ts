@@ -8,6 +8,7 @@ import {
   TransactionType,
 } from './enums';
 import { buildInstallmentDescription } from './rules';
+import { MAX_INSTALLMENTS } from './recurrence';
 
 /** Mês de 1 a 12. */
 export const monthSchema = z
@@ -100,8 +101,17 @@ export const recurrenceSchema = z
   .object({
     startMonth: monthSchema,
     startYear: yearSchema,
-    installments: z.number().int('Quantidade de parcelas deve ser inteiro').min(1).max(240),
-    startFrom: z.number().int('Parcela inicial deve ser inteiro').min(1).max(240).default(1),
+    installments: z
+      .number()
+      .int('Quantidade de parcelas deve ser inteiro')
+      .min(1)
+      .max(MAX_INSTALLMENTS),
+    startFrom: z
+      .number()
+      .int('Parcela inicial deve ser inteiro')
+      .min(1)
+      .max(MAX_INSTALLMENTS)
+      .default(1),
   })
   .superRefine((value, ctx) => {
     if (value.startFrom > value.installments) {

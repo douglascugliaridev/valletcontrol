@@ -30,12 +30,14 @@ export type RecurringRuleAvgAggregateOutputType = {
   amountCents: number | null
   startMonth: number | null
   startYear: number | null
+  monthsAhead: number | null
 }
 
 export type RecurringRuleSumAggregateOutputType = {
   amountCents: number | null
   startMonth: number | null
   startYear: number | null
+  monthsAhead: number | null
 }
 
 export type RecurringRuleMinAggregateOutputType = {
@@ -47,6 +49,7 @@ export type RecurringRuleMinAggregateOutputType = {
   category: $Enums.Category | null
   startMonth: number | null
   startYear: number | null
+  monthsAhead: number | null
   isActive: boolean | null
   createdAt: Date | null
   updatedAt: Date | null
@@ -61,6 +64,7 @@ export type RecurringRuleMaxAggregateOutputType = {
   category: $Enums.Category | null
   startMonth: number | null
   startYear: number | null
+  monthsAhead: number | null
   isActive: boolean | null
   createdAt: Date | null
   updatedAt: Date | null
@@ -75,6 +79,7 @@ export type RecurringRuleCountAggregateOutputType = {
   category: number
   startMonth: number
   startYear: number
+  monthsAhead: number
   isActive: number
   createdAt: number
   updatedAt: number
@@ -86,12 +91,14 @@ export type RecurringRuleAvgAggregateInputType = {
   amountCents?: true
   startMonth?: true
   startYear?: true
+  monthsAhead?: true
 }
 
 export type RecurringRuleSumAggregateInputType = {
   amountCents?: true
   startMonth?: true
   startYear?: true
+  monthsAhead?: true
 }
 
 export type RecurringRuleMinAggregateInputType = {
@@ -103,6 +110,7 @@ export type RecurringRuleMinAggregateInputType = {
   category?: true
   startMonth?: true
   startYear?: true
+  monthsAhead?: true
   isActive?: true
   createdAt?: true
   updatedAt?: true
@@ -117,6 +125,7 @@ export type RecurringRuleMaxAggregateInputType = {
   category?: true
   startMonth?: true
   startYear?: true
+  monthsAhead?: true
   isActive?: true
   createdAt?: true
   updatedAt?: true
@@ -131,6 +140,7 @@ export type RecurringRuleCountAggregateInputType = {
   category?: true
   startMonth?: true
   startYear?: true
+  monthsAhead?: true
   isActive?: true
   createdAt?: true
   updatedAt?: true
@@ -232,6 +242,7 @@ export type RecurringRuleGroupByOutputType = {
   category: $Enums.Category
   startMonth: number
   startYear: number
+  monthsAhead: number | null
   isActive: boolean
   createdAt: Date
   updatedAt: Date
@@ -269,6 +280,7 @@ export type RecurringRuleWhereInput = {
   category?: Prisma.EnumCategoryFilter<"RecurringRule"> | $Enums.Category
   startMonth?: Prisma.IntFilter<"RecurringRule"> | number
   startYear?: Prisma.IntFilter<"RecurringRule"> | number
+  monthsAhead?: Prisma.IntNullableFilter<"RecurringRule"> | number | null
   isActive?: Prisma.BoolFilter<"RecurringRule"> | boolean
   createdAt?: Prisma.DateTimeFilter<"RecurringRule"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"RecurringRule"> | Date | string
@@ -285,6 +297,7 @@ export type RecurringRuleOrderByWithRelationInput = {
   category?: Prisma.SortOrder
   startMonth?: Prisma.SortOrder
   startYear?: Prisma.SortOrder
+  monthsAhead?: Prisma.SortOrderInput | Prisma.SortOrder
   isActive?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
@@ -304,6 +317,7 @@ export type RecurringRuleWhereUniqueInput = Prisma.AtLeast<{
   category?: Prisma.EnumCategoryFilter<"RecurringRule"> | $Enums.Category
   startMonth?: Prisma.IntFilter<"RecurringRule"> | number
   startYear?: Prisma.IntFilter<"RecurringRule"> | number
+  monthsAhead?: Prisma.IntNullableFilter<"RecurringRule"> | number | null
   isActive?: Prisma.BoolFilter<"RecurringRule"> | boolean
   createdAt?: Prisma.DateTimeFilter<"RecurringRule"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"RecurringRule"> | Date | string
@@ -320,6 +334,7 @@ export type RecurringRuleOrderByWithAggregationInput = {
   category?: Prisma.SortOrder
   startMonth?: Prisma.SortOrder
   startYear?: Prisma.SortOrder
+  monthsAhead?: Prisma.SortOrderInput | Prisma.SortOrder
   isActive?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
@@ -342,6 +357,7 @@ export type RecurringRuleScalarWhereWithAggregatesInput = {
   category?: Prisma.EnumCategoryWithAggregatesFilter<"RecurringRule"> | $Enums.Category
   startMonth?: Prisma.IntWithAggregatesFilter<"RecurringRule"> | number
   startYear?: Prisma.IntWithAggregatesFilter<"RecurringRule"> | number
+  monthsAhead?: Prisma.IntNullableWithAggregatesFilter<"RecurringRule"> | number | null
   isActive?: Prisma.BoolWithAggregatesFilter<"RecurringRule"> | boolean
   createdAt?: Prisma.DateTimeWithAggregatesFilter<"RecurringRule"> | Date | string
   updatedAt?: Prisma.DateTimeWithAggregatesFilter<"RecurringRule"> | Date | string
@@ -355,6 +371,7 @@ export type RecurringRuleCreateInput = {
   category: $Enums.Category
   startMonth: number
   startYear: number
+  monthsAhead?: number | null
   isActive?: boolean
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -371,6 +388,7 @@ export type RecurringRuleUncheckedCreateInput = {
   category: $Enums.Category
   startMonth: number
   startYear: number
+  monthsAhead?: number | null
   isActive?: boolean
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -385,6 +403,7 @@ export type RecurringRuleUpdateInput = {
   category?: Prisma.EnumCategoryFieldUpdateOperationsInput | $Enums.Category
   startMonth?: Prisma.IntFieldUpdateOperationsInput | number
   startYear?: Prisma.IntFieldUpdateOperationsInput | number
+  monthsAhead?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   isActive?: Prisma.BoolFieldUpdateOperationsInput | boolean
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -401,6 +420,7 @@ export type RecurringRuleUncheckedUpdateInput = {
   category?: Prisma.EnumCategoryFieldUpdateOperationsInput | $Enums.Category
   startMonth?: Prisma.IntFieldUpdateOperationsInput | number
   startYear?: Prisma.IntFieldUpdateOperationsInput | number
+  monthsAhead?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   isActive?: Prisma.BoolFieldUpdateOperationsInput | boolean
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -416,6 +436,7 @@ export type RecurringRuleCreateManyInput = {
   category: $Enums.Category
   startMonth: number
   startYear: number
+  monthsAhead?: number | null
   isActive?: boolean
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -429,6 +450,7 @@ export type RecurringRuleUpdateManyMutationInput = {
   category?: Prisma.EnumCategoryFieldUpdateOperationsInput | $Enums.Category
   startMonth?: Prisma.IntFieldUpdateOperationsInput | number
   startYear?: Prisma.IntFieldUpdateOperationsInput | number
+  monthsAhead?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   isActive?: Prisma.BoolFieldUpdateOperationsInput | boolean
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -443,6 +465,7 @@ export type RecurringRuleUncheckedUpdateManyInput = {
   category?: Prisma.EnumCategoryFieldUpdateOperationsInput | $Enums.Category
   startMonth?: Prisma.IntFieldUpdateOperationsInput | number
   startYear?: Prisma.IntFieldUpdateOperationsInput | number
+  monthsAhead?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   isActive?: Prisma.BoolFieldUpdateOperationsInput | boolean
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -472,6 +495,7 @@ export type RecurringRuleCountOrderByAggregateInput = {
   category?: Prisma.SortOrder
   startMonth?: Prisma.SortOrder
   startYear?: Prisma.SortOrder
+  monthsAhead?: Prisma.SortOrder
   isActive?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
@@ -481,6 +505,7 @@ export type RecurringRuleAvgOrderByAggregateInput = {
   amountCents?: Prisma.SortOrder
   startMonth?: Prisma.SortOrder
   startYear?: Prisma.SortOrder
+  monthsAhead?: Prisma.SortOrder
 }
 
 export type RecurringRuleMaxOrderByAggregateInput = {
@@ -492,6 +517,7 @@ export type RecurringRuleMaxOrderByAggregateInput = {
   category?: Prisma.SortOrder
   startMonth?: Prisma.SortOrder
   startYear?: Prisma.SortOrder
+  monthsAhead?: Prisma.SortOrder
   isActive?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
@@ -506,6 +532,7 @@ export type RecurringRuleMinOrderByAggregateInput = {
   category?: Prisma.SortOrder
   startMonth?: Prisma.SortOrder
   startYear?: Prisma.SortOrder
+  monthsAhead?: Prisma.SortOrder
   isActive?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
@@ -515,6 +542,7 @@ export type RecurringRuleSumOrderByAggregateInput = {
   amountCents?: Prisma.SortOrder
   startMonth?: Prisma.SortOrder
   startYear?: Prisma.SortOrder
+  monthsAhead?: Prisma.SortOrder
 }
 
 export type RecurringRuleCreateNestedManyWithoutOwnerInput = {
@@ -579,6 +607,14 @@ export type EnumCategoryFieldUpdateOperationsInput = {
   set?: $Enums.Category
 }
 
+export type NullableIntFieldUpdateOperationsInput = {
+  set?: number | null
+  increment?: number
+  decrement?: number
+  multiply?: number
+  divide?: number
+}
+
 export type RecurringRuleCreateWithoutOwnerInput = {
   id?: string
   description: string
@@ -587,6 +623,7 @@ export type RecurringRuleCreateWithoutOwnerInput = {
   category: $Enums.Category
   startMonth: number
   startYear: number
+  monthsAhead?: number | null
   isActive?: boolean
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -601,6 +638,7 @@ export type RecurringRuleUncheckedCreateWithoutOwnerInput = {
   category: $Enums.Category
   startMonth: number
   startYear: number
+  monthsAhead?: number | null
   isActive?: boolean
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -645,6 +683,7 @@ export type RecurringRuleScalarWhereInput = {
   category?: Prisma.EnumCategoryFilter<"RecurringRule"> | $Enums.Category
   startMonth?: Prisma.IntFilter<"RecurringRule"> | number
   startYear?: Prisma.IntFilter<"RecurringRule"> | number
+  monthsAhead?: Prisma.IntNullableFilter<"RecurringRule"> | number | null
   isActive?: Prisma.BoolFilter<"RecurringRule"> | boolean
   createdAt?: Prisma.DateTimeFilter<"RecurringRule"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"RecurringRule"> | Date | string
@@ -658,6 +697,7 @@ export type RecurringRuleCreateWithoutTransactionsInput = {
   category: $Enums.Category
   startMonth: number
   startYear: number
+  monthsAhead?: number | null
   isActive?: boolean
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -673,6 +713,7 @@ export type RecurringRuleUncheckedCreateWithoutTransactionsInput = {
   category: $Enums.Category
   startMonth: number
   startYear: number
+  monthsAhead?: number | null
   isActive?: boolean
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -702,6 +743,7 @@ export type RecurringRuleUpdateWithoutTransactionsInput = {
   category?: Prisma.EnumCategoryFieldUpdateOperationsInput | $Enums.Category
   startMonth?: Prisma.IntFieldUpdateOperationsInput | number
   startYear?: Prisma.IntFieldUpdateOperationsInput | number
+  monthsAhead?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   isActive?: Prisma.BoolFieldUpdateOperationsInput | boolean
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -717,6 +759,7 @@ export type RecurringRuleUncheckedUpdateWithoutTransactionsInput = {
   category?: Prisma.EnumCategoryFieldUpdateOperationsInput | $Enums.Category
   startMonth?: Prisma.IntFieldUpdateOperationsInput | number
   startYear?: Prisma.IntFieldUpdateOperationsInput | number
+  monthsAhead?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   isActive?: Prisma.BoolFieldUpdateOperationsInput | boolean
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -730,6 +773,7 @@ export type RecurringRuleCreateManyOwnerInput = {
   category: $Enums.Category
   startMonth: number
   startYear: number
+  monthsAhead?: number | null
   isActive?: boolean
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -743,6 +787,7 @@ export type RecurringRuleUpdateWithoutOwnerInput = {
   category?: Prisma.EnumCategoryFieldUpdateOperationsInput | $Enums.Category
   startMonth?: Prisma.IntFieldUpdateOperationsInput | number
   startYear?: Prisma.IntFieldUpdateOperationsInput | number
+  monthsAhead?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   isActive?: Prisma.BoolFieldUpdateOperationsInput | boolean
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -757,6 +802,7 @@ export type RecurringRuleUncheckedUpdateWithoutOwnerInput = {
   category?: Prisma.EnumCategoryFieldUpdateOperationsInput | $Enums.Category
   startMonth?: Prisma.IntFieldUpdateOperationsInput | number
   startYear?: Prisma.IntFieldUpdateOperationsInput | number
+  monthsAhead?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   isActive?: Prisma.BoolFieldUpdateOperationsInput | boolean
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -771,6 +817,7 @@ export type RecurringRuleUncheckedUpdateManyWithoutOwnerInput = {
   category?: Prisma.EnumCategoryFieldUpdateOperationsInput | $Enums.Category
   startMonth?: Prisma.IntFieldUpdateOperationsInput | number
   startYear?: Prisma.IntFieldUpdateOperationsInput | number
+  monthsAhead?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   isActive?: Prisma.BoolFieldUpdateOperationsInput | boolean
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -816,6 +863,7 @@ export type RecurringRuleSelect<ExtArgs extends runtime.Types.Extensions.Interna
   category?: boolean
   startMonth?: boolean
   startYear?: boolean
+  monthsAhead?: boolean
   isActive?: boolean
   createdAt?: boolean
   updatedAt?: boolean
@@ -833,6 +881,7 @@ export type RecurringRuleSelectCreateManyAndReturn<ExtArgs extends runtime.Types
   category?: boolean
   startMonth?: boolean
   startYear?: boolean
+  monthsAhead?: boolean
   isActive?: boolean
   createdAt?: boolean
   updatedAt?: boolean
@@ -848,6 +897,7 @@ export type RecurringRuleSelectUpdateManyAndReturn<ExtArgs extends runtime.Types
   category?: boolean
   startMonth?: boolean
   startYear?: boolean
+  monthsAhead?: boolean
   isActive?: boolean
   createdAt?: boolean
   updatedAt?: boolean
@@ -863,12 +913,13 @@ export type RecurringRuleSelectScalar = {
   category?: boolean
   startMonth?: boolean
   startYear?: boolean
+  monthsAhead?: boolean
   isActive?: boolean
   createdAt?: boolean
   updatedAt?: boolean
 }
 
-export type RecurringRuleOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "ownerId" | "description" | "amountCents" | "type" | "category" | "startMonth" | "startYear" | "isActive" | "createdAt" | "updatedAt", ExtArgs["result"]["recurringRule"]>
+export type RecurringRuleOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "ownerId" | "description" | "amountCents" | "type" | "category" | "startMonth" | "startYear" | "monthsAhead" | "isActive" | "createdAt" | "updatedAt", ExtArgs["result"]["recurringRule"]>
 export type RecurringRuleInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   owner?: boolean | Prisma.UserDefaultArgs<ExtArgs>
   transactions?: boolean | Prisma.RecurringRule$transactionsArgs<ExtArgs>
@@ -896,6 +947,11 @@ export type $RecurringRulePayload<ExtArgs extends runtime.Types.Extensions.Inter
     category: $Enums.Category
     startMonth: number
     startYear: number
+    /**
+     * Quantos meses a gerar a partir de startMonth/startYear (inclusivo).
+     * `null` = sem prazo (comportamento anterior: a regra vale para sempre).
+     */
+    monthsAhead: number | null
     isActive: boolean
     createdAt: Date
     updatedAt: Date
@@ -1332,6 +1388,7 @@ export interface RecurringRuleFieldRefs {
   readonly category: Prisma.FieldRef<"RecurringRule", 'Category'>
   readonly startMonth: Prisma.FieldRef<"RecurringRule", 'Int'>
   readonly startYear: Prisma.FieldRef<"RecurringRule", 'Int'>
+  readonly monthsAhead: Prisma.FieldRef<"RecurringRule", 'Int'>
   readonly isActive: Prisma.FieldRef<"RecurringRule", 'Boolean'>
   readonly createdAt: Prisma.FieldRef<"RecurringRule", 'DateTime'>
   readonly updatedAt: Prisma.FieldRef<"RecurringRule", 'DateTime'>

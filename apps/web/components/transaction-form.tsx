@@ -9,6 +9,7 @@ import type {
 } from '@walletcontrol/shared';
 import {
   CARD_BRAND_LABELS,
+  MAX_INSTALLMENTS,
   PAYMENT_METHODS,
   cardToPaymentMethod,
   formatCardLabel,
@@ -146,8 +147,11 @@ export function TransactionForm({
   if (!draft.description.trim()) errors.push('Informe a descrição.');
   if (amountCents === null) errors.push('Informe um valor válido.');
   if (needsMethod && !draft.paymentMethod) errors.push('Devedores exigem o método de pagamento.');
-  if (initial === null && totalInstallments > 12) {
-    errors.push('Máximo de 12 parcelas.');
+  if (initial === null && (!Number.isInteger(totalInstallments) || totalInstallments < 1)) {
+    errors.push('Parcelas deve ser um número inteiro maior que zero.');
+  }
+  if (initial === null && totalInstallments > MAX_INSTALLMENTS) {
+    errors.push(`Máximo de ${MAX_INSTALLMENTS} parcelas.`);
   }
   if (initial === null && startingInstallment < 1) {
     errors.push('Parcela inicial mínima: 1.');
@@ -408,7 +412,7 @@ export function TransactionForm({
                 id="installments"
                 type="number"
                 min={1}
-                max={12}
+                max={MAX_INSTALLMENTS}
                 placeholder="1"
                 value={draft.installments}
                 onChange={(e) => set({ installments: e.target.value })}

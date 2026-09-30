@@ -20,6 +20,7 @@ interface PrismaRecurringRuleRow {
   category: $Enums.Category;
   startMonth: number;
   startYear: number;
+  monthsAhead: number | null;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -35,6 +36,7 @@ function toDomain(row: PrismaRecurringRuleRow): RecurringRule {
     category: EnumMapper.toSharedCategory(row.category) as Category,
     startMonth: row.startMonth as Month,
     startYear: row.startYear,
+    monthsAhead: row.monthsAhead ?? null,
     isActive: row.isActive,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -52,6 +54,7 @@ function toDbData(
     category: EnumMapper.toDbCategory(input.category),
     startMonth: input.startMonth,
     startYear: input.startYear,
+    monthsAhead: input.monthsAhead ?? null,
     isActive: input.isActive ?? true,
   };
 }
@@ -69,6 +72,9 @@ function toDbPatch(patch: RecurringRuleUpdate): Prisma.RecurringRuleUpdateInput 
   }
   if (patch.category !== undefined) {
     data.category = EnumMapper.toDbCategory(patch.category);
+  }
+  if (patch.monthsAhead !== undefined) {
+    data.monthsAhead = patch.monthsAhead;
   }
   if (patch.isActive !== undefined) {
     data.isActive = patch.isActive;

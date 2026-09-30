@@ -2,12 +2,7 @@
 
 import type { Card as CardEntity, CardBrand } from '@walletcontrol/shared';
 import { CARD_BRAND_LABELS, CARD_BRANDS, formatCardLabel } from '@walletcontrol/shared';
-import {
-  useCards,
-  useCreateCard,
-  useDeleteCard,
-  useUpdateCard,
-} from '@/lib/hooks';
+import { useCards, useCreateCard, useDeleteCard, useUpdateCard } from '@/lib/hooks';
 import { ApiError } from '@/lib/api';
 import { CardLogo } from '@/components/card-logo';
 import {
@@ -152,7 +147,11 @@ export function CardsManager() {
                 }
               >
                 {card.logoUrl ? (
-                  <CardLogo logoUrl={card.logoUrl} alt={card.name} />
+                  <CardLogo
+                    logoUrl={card.logoUrl}
+                    alt={card.name}
+                    fallback={<CreditCard className="size-4 text-muted-foreground" />}
+                  />
                 ) : (
                   <CreditCard className="size-4 text-muted-foreground" />
                 )}

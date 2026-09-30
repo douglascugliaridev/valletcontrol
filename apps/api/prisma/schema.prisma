@@ -103,6 +103,9 @@ model RecurringRule {
   category     Category
   startMonth   Int
   startYear    Int
+  /// Quantos meses a gerar a partir de startMonth/startYear (inclusivo).
+  /// `null` = sem prazo (comportamento anterior: a regra vale para sempre).
+  monthsAhead  Int?
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
