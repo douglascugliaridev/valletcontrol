@@ -1,5 +1,5 @@
-import type { Transaction, TransactionInput, TransactionQuery } from '@valletcontrol/shared';
-import { Category, PaymentMethod, TransactionType } from '@valletcontrol/shared';
+import type { Transaction, TransactionInput, TransactionQuery } from '@walletcontrol/shared';
+import { Category, PaymentMethod, TransactionType } from '@walletcontrol/shared';
 import { TransactionRepositoryPort } from '../modules/transactions/application/ports/transaction-repository.port';
 
 export function makeTransaction(overrides: Partial<Transaction> = {}): Transaction {

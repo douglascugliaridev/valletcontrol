@@ -5,7 +5,7 @@ import type {
   Month,
   Transaction,
   TransactionUpdate,
-} from '@valletcontrol/shared';
+} from '@walletcontrol/shared';
 import {
   ApiError,
   authErrorMessage,
@@ -143,7 +143,7 @@ export default function DashboardPage() {
         <div className="flex items-center gap-2">
           <Logo />
           <div className="leading-tight">
-            <p className="font-semibold">ValletControl</p>
+            <p className="font-semibold">WalletControl</p>
             <p className="text-xs text-muted-foreground">
               {user?.name ? `Olá, ${String(user.name).split(' ')[0]}` : 'Olá'}
             </p>

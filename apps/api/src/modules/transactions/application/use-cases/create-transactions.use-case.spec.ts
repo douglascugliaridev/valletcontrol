@@ -1,6 +1,6 @@
-import { Category, TransactionType } from '@valletcontrol/shared';
-import type { TransactionInput } from '@valletcontrol/shared';
-import { DomainValidationError } from '@valletcontrol/shared';
+import { Category, TransactionType } from '@walletcontrol/shared';
+import type { TransactionInput } from '@walletcontrol/shared';
+import { DomainValidationError } from '@walletcontrol/shared';
 import { NotFoundError } from '../../../../common/errors/app-errors';
 import { CreateTransactionsUseCase } from './create-transactions.use-case';
 import {

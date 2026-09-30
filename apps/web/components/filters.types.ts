@@ -1,4 +1,4 @@
-import type { Category, TransactionType } from '@valletcontrol/shared';
+import type { Category, TransactionType } from '@walletcontrol/shared';
 
 export interface Filters {
   search: string;

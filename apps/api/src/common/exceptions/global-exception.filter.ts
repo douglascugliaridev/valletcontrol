@@ -8,8 +8,8 @@ import {
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { AppError } from '../errors/app-errors';
-import { DomainValidationError } from '@valletcontrol/shared';
-import type { ErrorResponse } from '@valletcontrol/shared';
+import { DomainValidationError } from '@walletcontrol/shared';
+import type { ErrorResponse } from '@walletcontrol/shared';
 
 /**
  * Filter global de exceções — converte erros em respostas HTTP

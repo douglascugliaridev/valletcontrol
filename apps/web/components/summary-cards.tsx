@@ -1,6 +1,6 @@
 'use client';
 
-import type { MonthlyReport } from '@valletcontrol/shared';
+import type { MonthlyReport } from '@walletcontrol/shared';
 import { Card, Skeleton } from '@/components/ui';
 import { ArrowDownCircle, ArrowUpCircle, HandCoins, Scale } from 'lucide-react';
 import { formatCents } from '@/lib/format';

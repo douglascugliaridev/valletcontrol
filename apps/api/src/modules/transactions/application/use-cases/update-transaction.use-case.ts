@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import type { Transaction, TransactionInput, TransactionUpdate } from '@valletcontrol/shared';
-import { validateCardPaymentConsistency, validateTransactionInput } from '@valletcontrol/shared';
+import type { Transaction, TransactionInput, TransactionUpdate } from '@walletcontrol/shared';
+import { validateCardPaymentConsistency, validateTransactionInput } from '@walletcontrol/shared';
 import { NotFoundError } from '../../../../common/errors/app-errors';
 import { CardRepositoryPort } from '../../../cards/application/ports/card-repository.port';
 import { TransactionRepositoryPort } from '../ports/transaction-repository.port';

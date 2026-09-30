@@ -9,7 +9,7 @@ import {
   ValidateIf,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
-import { CARD_BRANDS, CardBrand } from '@valletcontrol/shared';
+import { CARD_BRANDS, CardBrand } from '@walletcontrol/shared';
 
 export class UpdateCardDto {
   @IsOptional()

@@ -1,5 +1,5 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Post } from '@nestjs/common';
-import type { AuthResponse, User } from '@valletcontrol/shared';
+import type { AuthResponse, User } from '@walletcontrol/shared';
 import {
   AuthenticatedUser,
   CurrentUser,

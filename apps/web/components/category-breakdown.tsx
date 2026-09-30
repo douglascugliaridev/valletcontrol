@@ -1,7 +1,7 @@
 'use client';
 
-import type { Card as CardType, Category, MonthlyReport } from '@valletcontrol/shared';
-import { CATEGORY_LABELS, formatCardLabel } from '@valletcontrol/shared';
+import type { Card as CardType, Category, MonthlyReport } from '@walletcontrol/shared';
+import { CATEGORY_LABELS, formatCardLabel } from '@walletcontrol/shared';
 import { Card, CardHeader, CardTitle, Skeleton } from '@/components/ui';
 import { formatCents } from '@/lib/format';
 import { CardLogo } from '@/components/card-logo';

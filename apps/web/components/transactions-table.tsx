@@ -1,7 +1,7 @@
 'use client';
 
-import type { Card as CardType, Transaction } from '@valletcontrol/shared';
-import { CATEGORY_LABELS, formatCardLabel, TRANSACTION_TYPE_LABELS } from '@valletcontrol/shared';
+import type { Card as CardType, Transaction } from '@walletcontrol/shared';
+import { CATEGORY_LABELS, formatCardLabel, TRANSACTION_TYPE_LABELS } from '@walletcontrol/shared';
 import { Badge, Button, Card } from '@/components/ui';
 import { Check, Pencil, Trash2 } from 'lucide-react';
 import { typeTone } from '@/lib/display';

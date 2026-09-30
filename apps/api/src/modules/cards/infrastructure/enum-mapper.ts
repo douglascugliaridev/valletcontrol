@@ -1,5 +1,5 @@
-import { CardBrand as SharedCardBrand } from '@valletcontrol/shared';
-import type { CardBrand as SharedCardBrandType } from '@valletcontrol/shared';
+import { CardBrand as SharedCardBrand } from '@walletcontrol/shared';
+import type { CardBrand as SharedCardBrandType } from '@walletcontrol/shared';
 import { $Enums } from '../../../generated/prisma/client';
 
 export type DbCardBrand = $Enums.CardBrand;

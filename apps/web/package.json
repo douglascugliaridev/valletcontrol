@@ -1,8 +1,8 @@
 {
-  "name": "@valletcontrol/web",
+  "name": "@walletcontrol/web",
   "version": "0.1.0",
   "private": true,
-  "description": "Web Next.js (App Router) do ValletControl com tema dark e TanStack Query",
+  "description": "Web Next.js (App Router) do WalletControl com tema dark e TanStack Query",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@tanstack/react-query": "^5.81.0",
-    "@valletcontrol/shared": "workspace:*",
+    "@walletcontrol/shared": "workspace:*",
     "clsx": "^2.1.1",
     "lucide-react": "^0.545.0",
     "next": "16.3.5",

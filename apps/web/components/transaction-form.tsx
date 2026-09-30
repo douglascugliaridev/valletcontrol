@@ -6,14 +6,14 @@ import type {
   PaymentMethod,
   Transaction,
   TransactionType,
-} from '@valletcontrol/shared';
+} from '@walletcontrol/shared';
 import {
   CARD_BRAND_LABELS,
   PAYMENT_METHODS,
   cardToPaymentMethod,
   formatCardLabel,
-} from '@valletcontrol/shared';
-import type { CreateTransactionPayload, TransactionUpdate } from '@valletcontrol/shared';
+} from '@walletcontrol/shared';
+import type { CreateTransactionPayload, TransactionUpdate } from '@walletcontrol/shared';
 import { Button, Input, Label, Modal, Select, Spinner } from '@/components/ui';
 import { CardLogo } from '@/components/card-logo';
 import { categoriesForType } from '@/lib/display';

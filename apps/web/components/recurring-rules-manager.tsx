@@ -1,7 +1,7 @@
 'use client';
 
-import type { Category, Month, RecurringRule, TransactionType } from '@valletcontrol/shared';
-import { CATEGORY_LABELS, MONTH_NAMES_LONG, TRANSACTION_TYPE_LABELS } from '@valletcontrol/shared';
+import type { Category, Month, RecurringRule, TransactionType } from '@walletcontrol/shared';
+import { CATEGORY_LABELS, MONTH_NAMES_LONG, TRANSACTION_TYPE_LABELS } from '@walletcontrol/shared';
 import {
   useCreateRecurringRule,
   useDeleteRecurringRule,

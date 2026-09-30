@@ -1,12 +1,12 @@
 'use client';
 
-import type { Category, TransactionType } from '@valletcontrol/shared';
+import type { Category, TransactionType } from '@walletcontrol/shared';
 import {
   CATEGORIES,
   CATEGORY_LABELS,
   CATEGORY_TO_TYPE,
   TRANSACTION_TYPES,
-} from '@valletcontrol/shared';
+} from '@walletcontrol/shared';
 import { Button, Input, Select } from '@/components/ui';
 import { Search } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';

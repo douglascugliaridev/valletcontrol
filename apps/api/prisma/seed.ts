@@ -36,7 +36,7 @@ async function hashPassword(plain: string, salt = crypto.randomBytes(16)): Promi
 }
 
 async function main() {
-  const email = 'demo@valletcontrol.app';
+  const email = 'demo@walletcontrol.app';
   const passwordHash = await hashPassword('senha-segura-123');
 
   const user = await prisma.user.upsert({

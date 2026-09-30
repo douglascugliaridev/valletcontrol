@@ -3,7 +3,7 @@ import type {
   TransactionInput,
   TransactionQuery,
   TransactionUpdate,
-} from '@valletcontrol/shared';
+} from '@walletcontrol/shared';
 
 /**
  * Port (driven adapter) de persistência de transações.

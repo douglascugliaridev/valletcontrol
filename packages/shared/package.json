@@ -1,5 +1,5 @@
 {
-  "name": "@valletcontrol/shared",
+  "name": "@walletcontrol/shared",
   "version": "0.1.0",
   "private": true,
   "description": "Domínio puro e regras de negócio compartilhadas entre web, api e mobile",

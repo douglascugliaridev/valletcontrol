@@ -1,4 +1,4 @@
-import type { User } from '@valletcontrol/shared';
+import type { User } from '@walletcontrol/shared';
 import { ConflictError } from '../../../../common/errors/app-errors';
 import type { PasswordHasherPort } from '../ports/password-hasher.port';
 import type { TokenServicePort } from '../ports/token-service.port';

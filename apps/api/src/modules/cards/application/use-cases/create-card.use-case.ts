@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { Card, CardInput } from '@valletcontrol/shared';
+import type { Card, CardInput } from '@walletcontrol/shared';
 import { CardRepositoryPort } from '../ports/card-repository.port';
 
 export interface CreateCardInput {

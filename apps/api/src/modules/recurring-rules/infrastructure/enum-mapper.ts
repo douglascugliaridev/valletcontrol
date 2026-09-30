@@ -1,7 +1,7 @@
 import type {
   Category as SharedCategory,
   TransactionType as SharedType,
-} from '@valletcontrol/shared';
+} from '@walletcontrol/shared';
 import { $Enums } from '../../../generated/prisma/client';
 
 export type DbType = $Enums.TransactionType;

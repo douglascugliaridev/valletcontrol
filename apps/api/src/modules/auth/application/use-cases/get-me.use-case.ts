@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { User } from '@valletcontrol/shared';
+import type { User } from '@walletcontrol/shared';
 import { UnauthorizedError } from '../../../../common/errors/app-errors';
 import { UserRepositoryPort } from '../ports/user-repository.port';
 

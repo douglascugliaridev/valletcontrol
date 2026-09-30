@@ -5,7 +5,7 @@ import type {
   RecurringRule,
   RecurringRuleInput,
   RecurringRuleUpdate,
-} from '@valletcontrol/shared';
+} from '@walletcontrol/shared';
 import type { Prisma, $Enums } from '../../../generated/prisma/client';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import { RecurringRuleRepositoryPort } from '../application/ports/recurring-rule-repository.port';

@@ -4,8 +4,8 @@ import { Providers } from './providers';
 
 export const metadata: Metadata = {
   title: {
-    default: 'ValletControl — Controle financeiro pessoal',
-    template: '%s · ValletControl',
+    default: 'WalletControl — Controle financeiro pessoal',
+    template: '%s · WalletControl',
   },
   description: 'Controle financeiro pessoal — resumo mensal, categorias e recorrências.',
 };

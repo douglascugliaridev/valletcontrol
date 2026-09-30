@@ -1,4 +1,4 @@
-import type { ErrorResponse } from '@valletcontrol/shared';
+import type { ErrorResponse } from '@walletcontrol/shared';
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/api';
 export const API_ORIGIN = API_URL.replace(/\/api\/?$/, '');
@@ -10,8 +10,8 @@ export function resolveAssetUrl(path: string | null | undefined): string | undef
   return `${API_ORIGIN}${path.startsWith('/') ? path : `/${path}`}`;
 }
 
-const TOKEN_KEY = 'valletcontrol.token';
-const USER_KEY = 'valletcontrol.user';
+const TOKEN_KEY = 'walletcontrol.token';
+const USER_KEY = 'walletcontrol.user';
 
 export function getToken(): string | null {
   if (typeof window === 'undefined') return null;

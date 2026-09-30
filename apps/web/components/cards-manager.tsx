@@ -1,7 +1,7 @@
 'use client';
 
-import type { Card as CardEntity, CardBrand } from '@valletcontrol/shared';
-import { CARD_BRAND_LABELS, CARD_BRANDS, formatCardLabel } from '@valletcontrol/shared';
+import type { Card as CardEntity, CardBrand } from '@walletcontrol/shared';
+import { CARD_BRAND_LABELS, CARD_BRANDS, formatCardLabel } from '@walletcontrol/shared';
 import {
   useCards,
   useCreateCard,

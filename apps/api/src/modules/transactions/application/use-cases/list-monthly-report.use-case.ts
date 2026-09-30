@@ -5,8 +5,8 @@ import type {
   RecurringRule,
   Transaction,
   TransactionQuery,
-} from '@valletcontrol/shared';
-import { calculateSummary, coveredByRule, shouldMaterializeRule } from '@valletcontrol/shared';
+} from '@walletcontrol/shared';
+import { calculateSummary, coveredByRule, shouldMaterializeRule } from '@walletcontrol/shared';
 import { TransactionRepositoryPort } from '../ports/transaction-repository.port';
 import { RecurringRuleRepositoryPort } from '../../../recurring-rules/application/ports/recurring-rule-repository.port';
 

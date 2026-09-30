@@ -1,4 +1,4 @@
-import { Category, PaymentMethod, TransactionType } from '@valletcontrol/shared';
+import { Category, PaymentMethod, TransactionType } from '@walletcontrol/shared';
 import {
   makeTransaction,
   mockTransactionRepository,

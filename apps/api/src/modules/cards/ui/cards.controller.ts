@@ -11,7 +11,7 @@ import {
   Res,
 } from '@nestjs/common';
 import type { Response } from 'express';
-import type { Card, CardUpdate } from '@valletcontrol/shared';
+import type { Card, CardUpdate } from '@walletcontrol/shared';
 import type { AuthenticatedUser } from '../../../common/auth/decorators/current-user.decorator';
 import { CurrentUser } from '../../../common/auth/decorators/current-user.decorator';
 import { Public } from '../../../common/auth/decorators/public.decorator';

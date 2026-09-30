@@ -15,7 +15,7 @@ import type {
   Transaction,
   TransactionCreatedResponse,
   TransactionQuery,
-} from '@valletcontrol/shared';
+} from '@walletcontrol/shared';
 import type { AuthenticatedUser } from '../../../common/auth/decorators/current-user.decorator';
 import { CurrentUser } from '../../../common/auth/decorators/current-user.decorator';
 import { CreateTransactionsUseCase } from '../application/use-cases/create-transactions.use-case';

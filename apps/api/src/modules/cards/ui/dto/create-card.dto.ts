@@ -1,7 +1,7 @@
 import { Transform } from 'class-transformer';
 import { IsBoolean, IsEnum, IsIn, IsOptional, IsString, Length, Matches } from 'class-validator';
-import { CARD_BRANDS, CardBrand } from '@valletcontrol/shared';
-import type { CardInput } from '@valletcontrol/shared';
+import { CARD_BRANDS, CardBrand } from '@walletcontrol/shared';
+import type { CardInput } from '@walletcontrol/shared';
 
 export class CreateCardDto implements CardInput {
   @IsString({ message: 'Nome do cartão é obrigatório.' })

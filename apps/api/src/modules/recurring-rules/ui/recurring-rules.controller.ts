@@ -9,7 +9,7 @@ import {
   Patch,
   Post,
 } from '@nestjs/common';
-import type { Month, RecurringRule, RecurringRuleUpdate } from '@valletcontrol/shared';
+import type { Month, RecurringRule, RecurringRuleUpdate } from '@walletcontrol/shared';
 import type { AuthenticatedUser } from '../../../common/auth/decorators/current-user.decorator';
 import { CurrentUser } from '../../../common/auth/decorators/current-user.decorator';
 import { CreateRecurringRuleDto } from './dto/create-recurring-rule.dto';

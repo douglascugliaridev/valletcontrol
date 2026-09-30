@@ -36,7 +36,7 @@ async function bootstrap(): Promise<void> {
   const port = config.getOrThrow<number>('port');
   await app.listen(port);
   new Logger('Bootstrap').log(
-    `API valletcontrol rodando em http://localhost:${port}/${config.getOrThrow<string>('apiPrefix')}`,
+    `API walletcontrol rodando em http://localhost:${port}/${config.getOrThrow<string>('apiPrefix')}`,
   );
 }
 

@@ -1,4 +1,4 @@
-import type { Card, CardInput, CardUpdate } from '@valletcontrol/shared';
+import type { Card, CardInput, CardUpdate } from '@walletcontrol/shared';
 
 /**
  * Port (driven adapter) de persistência de cartões.

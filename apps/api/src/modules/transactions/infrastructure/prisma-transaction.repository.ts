@@ -6,7 +6,7 @@ import type {
   TransactionInput,
   TransactionQuery,
   TransactionUpdate,
-} from '@valletcontrol/shared';
+} from '@walletcontrol/shared';
 import type { Prisma, $Enums } from '../../../generated/prisma/client';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import { NotFoundError } from '../../../common/errors/app-errors';

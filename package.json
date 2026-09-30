@@ -1,5 +1,5 @@
 {
-  "name": "valletcontrol",
+  "name": "walletcontrol",
   "private": true,
   "version": "0.1.0",
   "description": "Monorepo - Controle financeiro pessoal (API NestJS hexagonal + Web Next.js + Mobile futuro)",
@@ -10,17 +10,17 @@
   },
   "scripts": {
     "dev": "turbo run dev",
-    "dev:api": "turbo run dev --filter=@valletcontrol/api",
-    "dev:web": "turbo run dev --filter=@valletcontrol/web",
+    "dev:api": "turbo run dev --filter=@walletcontrol/api",
+    "dev:web": "turbo run dev --filter=@walletcontrol/web",
     "build": "turbo run build",
     "test": "turbo run test",
-    "test:api": "turbo run test --filter=@valletcontrol/api",
+    "test:api": "turbo run test --filter=@walletcontrol/api",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "format": "turbo run format",
-    "db:migrate": "pnpm --filter @valletcontrol/api prisma:migrate",
-    "db:seed": "pnpm --filter @valletcontrol/api prisma:seed",
-    "db:studio": "pnpm --filter @valletcontrol/api prisma:studio",
+    "db:migrate": "pnpm --filter @walletcontrol/api prisma:migrate",
+    "db:seed": "pnpm --filter @walletcontrol/api prisma:seed",
+    "db:studio": "pnpm --filter @walletcontrol/api prisma:studio",
     "clean": "turbo run clean && rm -rf node_modules"
   },
   "pnpm": {

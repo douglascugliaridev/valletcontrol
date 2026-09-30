@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import type { RecurringRule, RecurringRuleUpdate } from '@valletcontrol/shared';
+import type { RecurringRule, RecurringRuleUpdate } from '@walletcontrol/shared';
 import { RecurringRuleRepositoryPort } from '../ports/recurring-rule-repository.port';
 
 export interface UpdateRecurringRuleInput {

@@ -1,4 +1,4 @@
-import type { RecurringRule, RecurringRuleInput, RecurringRuleUpdate } from '@valletcontrol/shared';
+import type { RecurringRule, RecurringRuleInput, RecurringRuleUpdate } from '@walletcontrol/shared';
 
 /**
  * Port (driven adapter) de persistência de regras recorrentes.

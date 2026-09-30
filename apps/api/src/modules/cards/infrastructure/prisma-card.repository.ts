@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import type { Card, CardInput, CardUpdate } from '@valletcontrol/shared';
+import type { Card, CardInput, CardUpdate } from '@walletcontrol/shared';
 import type { Prisma } from '../../../generated/prisma/client';
 import { CardBrandMapper } from './enum-mapper';
 import { PrismaService } from '../../../common/prisma/prisma.service';

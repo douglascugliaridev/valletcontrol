@@ -1,220 +1,1427 @@
-# ValletControl
+# WalletControl
 
-Aplicação de controle financeiro pessoal (receitas, despesas e devedores) com dashboard mensal, parcelas, cartões e regras recorrentes. Acessível pela rede local (celular e desktop).
+Aplicação de **controle financeiro pessoal**: receitas, despesas e valores a receber
+(devedores), organized em um **relatório mensal** com resumo, filtros, decomposição
+por categoria/cartão, **parcelamento**, **cartões de crédito** e **regras recorrentes**.
 
-## Stack
+Projetado para uso pessoal em rede local (celular e desktop na mesma rede) e também
+publicado na Vercel.
 
-- **Web**: Next.js (App Router) + React 19 + TanStack Query v5 + Tailwind v4, tema claro/escuro automático via next-themes.
-- **API**: NestJS (Express) + Prisma 7 + PostgreSQL 16, autenticação JWT.
-- **Domínio compartilhado** (`packages/shared`): enums, labels pt-BR, regras de validação puras, recorrência e cálculo do resumo — usados pela API e também validados no front (zod).
-- **Isolamento por usuário**: todos os repositórios da API recebem `ownerId` a partir do token JWT; cada usuário só enxerga os próprios dados.
+> **Nota sobre o nome:** o projeto já foi chamado de `ValletControl`. O rename para
+> `WalletControl` foi aplicado em código, assets, repositório e projetos Vercel.
+> A única ocorrência remanescente de `valletcontrol` está na credencial do PostgreSQL
+> (`DATABASE_URL` em `.env` / `.env.example`) — ver [Configuração](#configuração-e-ambiente).
 
-Requisitos: Node >= 22.12, pnpm >= 10 (projeto usa `packageManager: pnpm@10.26.0`).
+---
 
-## Estrutura do monorepo
+## Sumário
+
+1. [O que o sistema faz](#1-o-que-o-sistema-faz)
+2. [Stack](#2-stack)
+3. [Arquitetura](#3-arquitetura)
+4. [Estrutura do monorepo](#4-estrutura-do-monorepo)
+5. [Modelo de dados](#5-modelo-de-dados)
+6. [Regras de negócio](#6-regras-de-negócio)
+7. [Endpoints da API](#7-endpoints-da-api)
+8. [Contrato de erro](#8-contrato-de-erro)
+9. [Autenticação e segurança](#9-autenticação-e-segurança)
+10. [Isolamento por usuário e RLS](#10-isolamento-por-usuário-e-rls)
+11. [Front-end](#11-front-end)
+12. [Seed e importação de planilhas](#12-seed-e-importação-de-planilhas)
+13. [Configuração e ambiente](#13-configuração-e-ambiente)
+14. [Como rodar](#14-como-rodar)
+15. [Comandos](#15-comandos)
+16. [Testes](#16-testes)
+17. [Gaps conhecidos](#17-gaps-conhecidos)
+
+---
+
+## 1. O que o sistema faz
+
+**Autenticação.** Cadastro e login com e-mail e senha, sessão via JWT.
+
+**Dashboard mensal.** Seletor de mês/ano com virada de ano automática, resumo com
+Receitas / Despesas / Saldo / A receber, tabela de lançamentos e decomposição por
+categoria ou cartão.
+
+**Lançamentos.** Três tipos — `receita`, `despesa` e `devedor` — com valor em centavos,
+descrição, mês/ano de competência, vencimento opcional e status de pago.
+
+**Parcelamento.** Um lançamento pode ser criado com N parcelas distributed em meses
+consecutivos, começando numa parcela intermediária. Parcelas formam um grupo e podem
+ser editadas ou excluídas em série ou individualmente.
+
+**Cartões.** CRUD de cartões (bandeira, últimos 4 dígitos, cor, logo da bandeira,
+marcador de padrão). O cartão funciona como **bucket de classificação** da despesa e
+como método de pagamento do devedor.
+
+**Regras recorrentes.** Uma regra descreve um lançamento que se repete todo mês a
+partir de um mês/ano inicial (salário, aluguel, assinatura). Ela entra no relatório
+mensal como linha sintética, sem duplicar dados.
+
+---
+
+## 2. Stack
+
+| Camada                | Tecnologia                                                                             |
+| --------------------- | -------------------------------------------------------------------------------------- |
+| Monorepo              | pnpm workspaces + Turborepo 2.11                                                       |
+| Linguagem             | TypeScript 5.9 em modo `strict`                                                        |
+| Web                   | Next.js 16.3.5 (App Router) + React 19.3                                               |
+| Estado/cache no front | TanStack Query 5.81                                                                    |
+| Estilo                | Tailwind CSS 4.3 (config CSS-first, sem `tailwind.config.js`)                          |
+| Tema                  | `next-themes` 0.4.6 (classe `dark` no `<html>`)                                        |
+| API                   | NestJS 11.2 sobre **Express** (`@nestjs/platform-express`)                             |
+| Banco                 | PostgreSQL + Prisma 7.10 com _driver adapter_ (`@prisma/adapter-pg` + `pg`)            |
+| Autenticação          | JWT via `@nestjs/jwt` + `passport-jwt`; hash de senha com `node:crypto` **scrypt**     |
+| Validação             | `class-validator` (DTOs na borda HTTP) + **Zod 4** e regras puras em `packages/shared` |
+| Lint/format           | ESLint 10 + `typescript-eslint` + Prettier 3.6                                         |
+| Testes                | Jest 30 (API) e Vitest 5 (domínio compartilhado)                                       |
+| Deploy                | Vercel — `walletcontrol-api` e `walletcontrol-frontend`                                |
+
+**Requisitos:** Node `>= 22.12.0` e pnpm `>= 10` (o projeto fixa `pnpm@10.26.0`).
+
+---
+
+## 3. Arquitetura
+
+### 3.1 Monorepo
 
 ```
-apps/
-  api/     NestJS (módulos auth, cards, transactions, recurring-rules, health)
-  web/     Next.js (páginas login, register, dashboard, settings)
-packages/
-  shared/  domínio (enums, labels, rules, recurrence, money) + contratos de API + schemas zod
-  config/  tsconfig/eslint/prettier compartilhados
-prisma/    (apps/api/prisma) schema, migrações e seed
+valletcontrol/                    (raiz — ver nota de rename no topo)
+├── apps/
+│   ├── api/                      @walletcontrol/api    — NestJS + Prisma
+│   └── web/                      @walletcontrol/web    — Next.js
+└── packages/
+    ├── shared/                   @walletcontrol/shared — domínio puro
+    └── config/                   tsconfig + eslint compartilhados (sem package.json)
 ```
 
-A API usa **arquitetura hexagonal**: controller → use case → repositório Prisma. Endpoints vivem em `apps/api/src/modules/*`; regras de negócio puras em `packages/shared/src/domain`.
+`turbo.json` define as tarefas `build`, `dev`, `lint`, `typecheck`, `test`, `test:unit`
+e `clean`. `build`, `lint`, `typecheck` e `test` dependem de `^build`, ou seja, o pacote
+dependente só roda depois que suas dependências foram compiladas. `.env` e `tsconfig.json`
+são `globalDependencies`, e as variáveis de ambiente usadas estão declaradas em `globalEnv`
+para que o cache do Turbo seja invalidado quando elas mudam.
 
-## Funcionalidades
+### 3.2 API — arquitetura hexagonal
 
-### Autenticação
-- Registro de conta (nome, e-mail e senha) e login — `POST /auth/register` e `POST /auth/login`.
-- Sessão via JWT (`Bearer`), token de 7 dias, armazenado no `localStorage` (`valletcontrol.token`).
-- `GET /auth/me` devolve o usuário autenticado.
-- Guard no front é client-side (redireciona para `/login` sem token); na API exige Bearer em tudo, exceto `@Public()` (register, login, health).
+Cada módulo segue quatro camadas, e a dependência aponta sempre para dentro:
 
-### Dashboard (`/dashboard`)
-- **Resumo mensal**: Receitas, Despesas, Saldo (vermelho se negativo) e "A receber" com detalhe `pago · pendente`.
-- **Seletor de mês**: navegação com virada de ano automática (padrão: mês atual).
-- **Tabela de transações**: toggle marcar como pago (linha fica `line-through`), badges de tipo/categoria/cartão, vencimento, método, editar e excluir.
-- **Filtros**: busca por descrição (debounce 350ms), tipo, categoria (dependente do tipo) e pago/pendente, com "Limpar".
-- **Decomposição por categoria/cartão**: barras com % do total e logo do cartão; bucket de cartão quando `category` é nula.
-- Erros amigáveis: falha de rede sugere verificar se o dispositivo está na mesma rede e o servidor rodando.
-
-### Transações
-- Criar **receita**, **despesa** ou **devedor(a)** com: descrição, valor, mês/ano, vencimento (`dueDate`) opcional, checkbox "já pago".
-- **Parcelas** (`installments`, form limita a 12) com **iniciar na parcela N** (`startFrom`); o botão mostra quantos lançamentos serão criados.
-- Despesa com "categoria **ou** cartão" (nunca ambos, nunca nenhum).
-- Devedor exige cartão + método de pagamento.
-- Editar e excluir com modal que pergunta o escopo (ver "Parcelas e grupos").
-- Marcar pago/pendente com um clique.
-
-### Parcelas e grupos
-- Lançamento com mais de 1 parcela gera N transações com `installmentGroupId` comum e descrição serializada `1/12 Celular`, `2/12 Celular`, etc.
-- **Excluir**: modal pergunta "Apenas esta parcela" ou "Todas as parcelas" (`DELETE ?scope=one|series`).
-- **Editar**: seletor "Aplicar alterações a: Apenas esta parcela / Todas as parcelas" (`applyToAll`). Campos compartilhados (descrição, valor, tipo, categoria, cartão, método, vencimento) são propagados; **mês, ano e status de pagamento sempre continuam individuais**.
-- Parcelas existentes no padrão `i/N` receberam grupo retroativamente (backfill: mesmo dono + descrição sem prefixo + mesmo valor + tipo, com 2+ lançamentos).
-
-### Regras recorrentes (Configurações)
-- CRUD de regras (descrição, valor, tipo receita/despesa, categoria, mês/ano inicial, ativa/inativa).
-- Regra **ativa** entra no relatório mensal a partir do mês/ano inicial — como linha sintética **somente no resumo** (não vira linha clicável).
-- Idempotência: se já existir transação marcada por `recurringRuleId` no mesmo mês/ano, a regra não é reinserida.
-- Alterar regras também invalida o cache de transações.
-
-### Cartões (Configurações)
-- CRUD de cartões: nome, bandeira (Nubank/Itaucard/Outros), últimos 4 dígitos, cor e cartão padrão.
-- **Logo automática**: cartões Nubank/Itaucard recebem a URL do logo oficial no momento da criação.
-- Exibição: círculo com a logo ou com a cor do cartão; etiqueta `Meu Nubank •• 1234`; badge "Padrão".
-- Ao excluir cartão, as transações vinculadas perdem o cartão (FK `ON DELETE SET NULL`).
-
-### Tema e responsividade
-- Dark mode automático (sistema) via next-themes, sobreposição por classe.
-- Layout responsivo: cards empilham no mobile; modal vira bottom-sheet.
-- Dev acessível pela LAN (`http://192.168.1.10:3000`) via `allowedDevOrigins`.
-
-## Endpoints da API
-
-Prefixo global `/api`, autenticação Bearer (exceto os marcados `@Public()`).
-
-### Auth
-| Método | Rota | Descrição |
-|---|---|---|
-| POST | `/api/auth/register` | Cria conta e retorna `{ user, tokens }` (`@Public`) |
-| POST | `/api/auth/login` | Autentica e retorna `{ user, tokens }` (`@Public`) |
-| GET | `/api/auth/me` | Usuário autenticado |
-
-### Transactions
-| Método | Rota | Descrição |
-|---|---|---|
-| GET | `/api/transactions/monthly?month&year&search&type&category&isPaid` | Relatório mensal + `summary` (padrões: mês/ano atuais) |
-| POST | `/api/transactions` | Cria 1 lançamento ou N parcelas (`recurrence: { installments, startFrom? }`) |
-| PATCH | `/api/transactions/:id` | Edição parcial; `applyToAll: true` propaga na série |
-| DELETE | `/api/transactions/:id?scope=one\|series` | Exclui 1 ou a série inteira (padrão `one`) |
-
-### Cards
-| Método | Rota | Descrição |
-|---|---|---|
-| POST | `/api/cards` | Cria cartão |
-| GET | `/api/cards` | Lista (padrão primeiro, depois por nome) |
-| PATCH | `/api/cards/:id` | Atualiza campos parciais |
-| GET | `/api/cards/logos/:brand` | Logo oficial da bandeira |
-| DELETE | `/api/cards/:id` | Remove (204) |
-
-### Recurring rules
-| Método | Rota | Descrição |
-|---|---|---|
-| POST | `/api/recurring-rules` | Cria regra recorrente |
-| GET | `/api/recurring-rules` | Lista (ativas primeiro) |
-| PATCH | `/api/recurring-rules/:id` | Edita descrição/valor/tipo/categoria/isActive |
-| DELETE | `/api/recurring-rules/:id` | Remove (204) |
-
-### Health
-| Método | Rota | Descrição |
-|---|---|---|
-| GET | `/api/health` | `{ status: 'ok', timestamp }` (`@Public`) |
-
-### Erros
-- Regra de domínio violada → **422** com `domainCode` (ex.: `PAYMENT_METHOD_REQUIRED`).
-- Não encontrado → **404**; e-mail duplicado → **409**; credenciais inválidas → **401**; validação de DTO → **400** com lista de mensagens; erro inesperado → **500**.
-- Login usa mensagem única `'Email ou senha inválidos.'` para e-mail inexistente e senha errada (anti-enumeração).
-
-## Regras de negócio
-
-Definidas em `packages/shared/src/domain/rules.ts` (`validateTransactionInput`) e espelhadas no front (`schemas.ts` zod + `TransactionForm`).
-
-1. **Mês e ano**: mês inteiro 1–12; ano inteiro (API/DTO: 2000–2200) — `INVALID_MONTH`/`INVALID_YEAR`.
-2. **Valor**: `amountCents` inteiro positivo e seguro (safe integer) — `INVALID_AMOUNT`.
-3. **Categoria nula** só é permitida em **despesa com cartão** — `CATEGORY_REQUIRED`.
-4. **Tipo × categoria**: a categoria precisa combinar com o tipo (`contas_fixas`/`outros` → despesa; `receita` → receita; `devedores` → devedor) — `CATEGORY_TYPE_MISMATCH`.
-5. **Bucket de despesa**: despesa com categoria **e** cartão simultaneamente é proibida — `CATEGORY_CARD_CONFLICT`.
-6. **Devedores exigem `paymentMethod`** (`nubank`/`itaucard`) — `PAYMENT_METHOD_REQUIRED`; método é **proibido** nos demais tipos (inclusive categoria de despesa com método) — `PAYMENT_METHOD_NOT_ALLOWED`.
-7. **Consistência cartão × método**: se houver `cardBrand` e `paymentMethod` juntos, a bandeira deve mapear para o método (`nubank → nubank`, `itaucard → itaucard`; bandeira `outros` não mapeia) — `CARD_METHOD_MISMATCH`. Sem os dois juntos, `cardId` é apenas etiqueta.
-8. **Recorrência**: `installments` 1–240; `startFrom` default 1 e ≤ `installments` (no form web, máx. 12 parcelas).
-9. **Série de parcelas**: mesmo `installmentGroupId`; editar "todas" propaga apenas `description`, `amountCents`, `type`, `category`, `paymentMethod`, `cardId`, `dueDate` — **nunca** `month`, `year` ou `isPaid`.
-10. **Regras recorrentes**: ativas e com `mês/ano ≥ início` entram no resumo mensal como linha sintética (id `{ruleId}:{month}:{year}`, não paga, sem vencimento), desde que não exista transação real marcada por `recurringRuleId` no mesmo mês/ano (`shouldMaterializeRule` + `coveredByRule`).
-11. **Resumo mensal** (`calculateSummary`): `receitas − despesas = saldo`; devedores somados à parte em `total`, com `paid` e `unpaid` separados.
-12. **Autenticação**: senha mínima 8, com letras e números; hash scrypt nativo (salt 16 bytes, digest 64 bytes, OWASP N=2^14, r=8, p=1); e-mail normalizado (`trim().toLowerCase()`) e único — `EMAIL_ALREADY_IN_USE`.
-
-### Categorias e tipos
-
-| Tipo | Categorias | Label |
-|---|---|---|
-| `receita` | `receita` | Receita |
-| `despesa` | `contas_fixas`, `outros` (ou cartão) | Contas Fixas / Outros |
-| `devedor` | `devedores` | Devedores |
-
-## Banco de dados
-
-PostgreSQL 16 (host e porta vêm do `DATABASE_URL` no `.env`). Prisma 7 com driver adapter; client gerado em `apps/api/src/generated/prisma`.
-
-- **Models**: `users`, `transactions`, `cards`, `recurring_rules` (enums `TransactionType`, `Category`, `PaymentMethod`, `CardBrand`).
-- **Índices**: `transactions[ownerId, year, month]`, `transactions[ownerId, dueDate]`, `transactions[installmentGroupId]`, além de índices de e-mail, cartão e regra por dono.
-- **FKs**: `transactions.cardId` / `transactions.recurringRuleId` → `ON DELETE SET NULL`; `cards.ownerId` / `recurring_rules.ownerId` → `ON DELETE CASCADE`.
-- `dueDate` é `DATE` no Postgres, exposto como ISO `yyyy-mm-dd`.
-- **Migrações** (`apps/api/prisma/migrations/`):
-  - `20260919165908_init` — usuários e transações;
-  - `20260919213035_add_cards_recurring_rules` — cartões, regras recorrentes, `cardId`/`recurringRuleId`;
-  - `20260919223000_despesa_bucket_cartao` — `category` nullable + backfill migrando despesas de cartão para `cardId`;
-  - `20260920090000_add_card_logo_url` — coluna de logo;
-  - `20260920162236_add_installment_group` — grupo de parcelas + backfill do padrão `i/N`.
-
-## Configuração e ambiente
-
-Variáveis principais no `.env` da raiz (exemplo em `.env.example`; o web usa `apps/web/.env.local`):
-
-```env
-NODE_ENV=development
-API_PORT=3001
-API_PREFIX=api
-DATABASE_URL=postgresql://valletcontrol:valletcontrol@localhost:5433/valletcontrol?schema=public
-JWT_SECRET=<segredo 32 bytes mínimo>
-JWT_EXPIRES_IN=7d
-ALLOWED_ORIGINS=http://localhost:3000,http://192.168.1.10:3000
-NEXT_PUBLIC_API_URL=http://192.168.1.10:3001/api
+```
+ui/                 controller + dto/        ← HTTP: rotas, validação de borda, status
+  ↓
+application/
+  ├── use-cases/                            ← orquestração e regra de negócio aplicada
+  └── ports/                                ← interfaces abstratas (contrato de saída)
+  ↓
+infrastructure/                             ← Prisma repositories + enum mappers
 ```
 
-- Web não lê o `.env` raiz: a URL da API vem de `NEXT_PUBLIC_API_URL` (em `apps/web/.env.local`; fallback `http://localhost:3001/api`).
-- CORS libera apenas `ALLOWED_ORIGINS` (lista separada por vírgula).
+Regras-chave dessa organização:
 
-## Como rodar
+- **Controllers e use cases nunca importam Prisma.** Só os repositories em
+  `infrastructure/` tocam o client gerado.
+- **Toda operação de repositório recebe `ownerId`.** O `ownerId` vem do token JWT
+  (via `@CurrentUser()`), nunca do body da requisição — é o que garante o isolamento
+  por usuário no nível da aplicação.
+- **Ports são classes abstratas** injetadas via `providers` do módulo Nest:
+
+  | Port                          | Implementação                   |
+  | ----------------------------- | ------------------------------- |
+  | `UserRepositoryPort`          | `PrismaUserRepository`          |
+  | `PasswordHasherPort`          | `ScryptPasswordHasher`          |
+  | `TokenServicePort`            | `JwtTokenService`               |
+  | `CardRepositoryPort`          | `PrismaCardRepository`          |
+  | `RecurringRuleRepositoryPort` | `PrismaRecurringRuleRepository` |
+  | `TransactionRepositoryPort`   | `PrismaTransactionRepository`   |
+
+- **Enums em duas grafias.** O domínio fala minúsculo (`despesa`, `contas_fixas`) e o
+  banco guarda MAIÚSCULO (`DESPESA`, `CONTAS_FIXAS`). A conversão fica isolada em
+  `infrastructure/enum-mapper.ts` de cada módulo, com _fallback_ seguro
+  (`?? 'OUTROS'` / `?? 'outros'`) para nunca quebrar uma escrita.
+
+### 3.3 Domínio compartilhado
+
+`packages/shared` é TypeScript puro, sem dependência de framework, publicado com `tsup`
+(ESM + CJS + `.d.ts`). É a **fonte da verdade das regras**, consumida pela API e também
+pelo front (que valida antes de enviar, para dar feedback imediato).
+
+```
+packages/shared/src/
+├── domain/
+│   ├── enums.ts            enums, listas, labels pt-BR, CATEGORY_TO_TYPE
+│   ├── money.ts            centavos, Intl BRL, classe Money
+│   ├── transaction.ts      entidades e tipos de query/sumário
+│   ├── card.ts             bandeiras e helpers
+│   ├── recurring-rule.ts   entidade e predicados de recorrência
+│   ├── recurrence.ts       addMonths / expandRecurrence
+│   ├── rules.ts            ⭐ validação de negócio, resumo, parcelas
+│   ├── schemas.ts          espelho Zod das entradas
+│   └── user.ts             usuário e contratos de auth
+└── api/contract.ts         contratos HTTP compartilhados
+```
+
+---
+
+## 4. Estrutura do monorepo
+
+```
+apps/api/
+├── prisma/
+│   ├── schema.prisma             datasource, 4 models, 3 enums
+│   ├── prisma.config.ts          Prisma 7: URL vem daqui, não do schema
+│   ├── migrations/                7 migrações + migration_lock.toml
+│   ├── seed.ts                    seed idempotente
+│   ├── logos/                     havan.png, itaucard.png, nubank.png
+│   └── scripts/import-spreadsheet.ts   importador de .xlsx (CLI)
+├── src/
+│   ├── main.ts                    bootstrap, prefixo global, ValidationPipe, CORS
+│   ├── app.module.ts              ConfigModule, PrismaModule, APP_GUARD
+│   ├── generated/prisma/          client Prisma 7 gerado (versionado)
+│   ├── common/
+│   │   ├── auth/                  jwt.strategy, guard, decorators
+│   │   ├── config/                configuração tipada com fail-fast
+│   │   ├── errors/                AppError e subclasses
+│   │   ├── exceptions/            GlobalExceptionFilter
+│   │   └── prisma/                PrismaService (adapter) + module
+│   ├── modules/
+│   │   ├── auth/                  register, login, me
+│   │   ├── cards/                 CRUD de cartões
+│   │   ├── recurring-rules/       CRUD de regras recorrentes
+│   │   ├── transactions/          relatório mensal + CRUD
+│   │   └── health/                health check público
+│   └── test/                      fixtures compartilhadas pelos specs
+
+apps/web/
+├── app/
+│   ├── layout.tsx                 root layout + metadata (único Server Component)
+│   ├── providers.tsx              QueryClientProvider + ThemeProvider
+│   ├── globals.css                @theme claro/escuro (Tailwind v4)
+│   ├── icon.png                   app icon
+│   ├── page.tsx                   redireciona / -> /dashboard ou /login
+│   ├── (auth)/auth-shell.tsx      layout compartilhado de login/register
+│   ├── login/ · register/         autenticação
+│   ├── dashboard/                 relatório mensal
+│   └── settings/                  cartões + regras recorrentes
+├── components/
+│   ├── ui/index.tsx               Button, Card, Input, Select, Badge, Modal, …
+│   ├── logo.tsx · theme-toggle.tsx · month-selector.tsx
+│   ├── filters-bar.tsx · filters.types.ts
+│   ├── summary-cards.tsx · category-breakdown.tsx · transactions-table.tsx
+│   ├── transaction-form.tsx       criação/edição com parcelas
+│   ├── cards-manager.tsx · recurring-rules-manager.tsx
+│   └── card-logo.tsx
+├── lib/
+│   ├── api.ts                     client fetch, sessão, ApiError
+│   ├── hooks.ts                   hooks TanStack Query
+│   ├── format.ts · display.ts · cn.ts
+└── public/                        walletcontrol-logo.png, walletcontrol-mark.png
+```
+
+---
+
+## 5. Modelo de dados
+
+Datasource `postgresql`; o client é gerado por `prisma-client` para
+`apps/api/src/generated/prisma`. No Prisma 7 a URL **não** fica no schema — vem de
+`prisma.config.ts`, que carrega `../../.env` e depois `apps/api/.env` (o segundo tem
+precedência).
+
+### 5.1 Diagrama
+
+```
+                 ┌──────────┐
+                 │  users   │
+                 └────┬─────┘
+      ┌─────────────────┼──────────────────┬────────────────────┐
+      │ ON DELETE       │ ON DELETE        │ ON DELETE          │
+      │ CASCADE         │ CASCADE          │ CASCADE            │
+      ▼                 ▼                  ▼                    │
+┌──────────────┐  ┌───────────────┐  ┌──────────────────┐        │
+│ transactions │  │    cards      │  │ recurring_rules  │        │
+└──────┬───────┘  └───────────────┘  └──────────────────┘        │
+       │                                                        │
+       │ cardId          ── ON DELETE SET NULL ──┐              │
+       │ recurringRuleId ── ON DELETE SET NULL ──┼──────────────┘
+       │ installmentGroupId (sem FK, chave lógica)
+       ▼
+```
+
+Três decisões de modelagem merecem destaque:
+
+1. **`installmentGroupId` não é chave estrangeira.** É um `String?` sem FK, apenas
+   indexado. O grupo de parcelas é uma noção de aplicação: apagar o grupo inteiro ou
+   propagar um patch para ele são operações em massa (`updateMany`/`deleteMany` com
+   `where: { installmentGroupId, ownerId }`). Um FK exigiria uma tabela `installment_group`.
+2. **`Transaction.category` é anulável, `RecurringRule.category` não.** A anulabilidade
+   é a expressão do _bucket_ de despesa (ver [6.2](#62-regra-do-bucket-categoria-ou-cartao)).
+   Uma regra recorrente nunca é "de cartão", então não precisa de nulabilidade.
+3. **`dueDate` é `@db.Date`**, não timestamp, e o repositório converte para
+   `new Date(Date.UTC(y, m - 1, d))` ao gravar e para `yyyy-mm-dd` ao ler — evita
+   deslocamento de um dia por fuso horário.
+
+### 5.2 Models
+
+**`User`** → `users`
+
+| Campo                     | Tipo       | Observação                            |
+| ------------------------- | ---------- | ------------------------------------- |
+| `id`                      | `String`   | `@id @default(cuid())`                |
+| `name`                    | `String`   | obrigatório                           |
+| `email`                   | `String`   | `@unique`                             |
+| `passwordHash`            | `String`   | nunca sai da camada de infraestrutura |
+| `createdAt` / `updatedAt` | `DateTime` | `@default(now())` / `@updatedAt`      |
+
+Índices: `@@index([email])` (o `@unique` já cria `users_email_key`).
+
+**`Transaction`** → `transactions`
+
+| Campo                     | Tipo              | Observação                                          |
+| ------------------------- | ----------------- | --------------------------------------------------- |
+| `id`                      | `String`          | `cuid()`                                            |
+| `ownerId`                 | `String`          | FK `users.id` **CASCADE**                           |
+| `description`             | `String`          | 1–200 chars (validado na aplicação)                 |
+| `amountCents`             | `Int`             | **centavos**, sempre `> 0`                          |
+| `type`                    | `TransactionType` | `RECEITA` \| `DESPESA` \| `DEVEDOR`                 |
+| `category`                | `Category?`       | **anulável** — `null` = despesa bucketed por cartão |
+| `paymentMethod`           | `PaymentMethod?`  | só para `DEVEDOR`                                   |
+| `cardId`                  | `String?`         | FK `cards.id` **SET NULL**                          |
+| `dueDate`                 | `DateTime?`       | `@db.Date`                                          |
+| `month`                   | `Int`             | 1–12, competência                                   |
+| `year`                    | `Int`             | competência                                         |
+| `isPaid`                  | `Boolean`         | `@default(false)`                                   |
+| `recurringRuleId`         | `String?`         | FK `recurring_rules.id` **SET NULL**                |
+| `installmentGroupId`      | `String?`         | chave lógica da série de parcelas                   |
+| `createdAt` / `updatedAt` | `DateTime`        |                                                     |
+
+Índices compostos, escolhidos para as consultas reais do relatório:
+`@@index([ownerId, year, month])` (filtro do mês), `@@index([ownerId, dueDate])`
+(ordenação por vencimento) e `@@index([installmentGroupId])` (operações em série).
+
+**`Card`** → `cards`
+
+| Campo       | Tipo        | Observação                               |
+| ----------- | ----------- | ---------------------------------------- |
+| `id`        | `String`    | `cuid()`                                 |
+| `ownerId`   | `String`    | FK CASCADE                               |
+| `name`      | `String`    | rótulo livre, ex.: "Meu Nubank"          |
+| `brand`     | `CardBrand` | `NUBANK` \| `ITAUCARD` \| `OTHERS`       |
+| `last4`     | `String?`   | exatamente 4 dígitos quando presente     |
+| `color`     | `String?`   | hex `#rgb` ou `#rrggbb`                  |
+| `logoUrl`   | `String?`   | preenchido automaticamente pela bandeira |
+| `isDefault` | `Boolean`   | `@default(false)`                        |
+
+Índice: `@@index([ownerId, name])`. A listagem ordena por `isDefault desc, name asc`.
+
+**`RecurringRule`** → `recurring_rules`
+
+| Campo         | Tipo              | Observação                         |
+| ------------- | ----------------- | ---------------------------------- |
+| `id`          | `String`          | `cuid()`                           |
+| `ownerId`     | `String`          | FK CASCADE                         |
+| `description` | `String`          |                                    |
+| `amountCents` | `Int`             | centavos `> 0`                     |
+| `type`        | `TransactionType` |                                    |
+| `category`    | `Category`        | **obrigatório**                    |
+| `startMonth`  | `Int`             | 1–12 — **imutável após a criação** |
+| `startYear`   | `Int`             | **imutável após a criação**        |
+| `isActive`    | `Boolean`         | `@default(true)`                   |
+
+Índice: `@@index([ownerId, isActive])`. Listagem ordena por
+`isActive desc, startYear asc, startMonth asc`.
+
+### 5.3 Enums
+
+| Enum (banco)      | Valores                                          |
+| ----------------- | ------------------------------------------------ |
+| `TransactionType` | `RECEITA`, `DESPESA`, `DEVEDOR`                  |
+| `Category`        | `CONTAS_FIXAS`, `OUTROS`, `RECEITA`, `DEVEDORES` |
+| `PaymentMethod`   | `NUBANK`, `ITAUCARD`                             |
+| `CardBrand`       | `NUBANK`, `ITAUCARD`, `OTHERS`                   |
+
+`Category` já teve `NUBANK` e `ITAUCARD`; a migration
+`20260919223000_despesa_bucket_cartao` converteu essas categorias em `cardId` e recriou
+o enum. Essa é a origem histórica da regra de bucket.
+
+### 5.4 Migrações
+
+| Migração                                   | O que faz                                                                                                                                              |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `20200101000000_baseline`                  | placeholder `SELECT 1;` — marca um banco já existente como baselinado                                                                                  |
+| `20260919165908_init`                      | enums iniciais, `users` e `transactions` (com `category NOT NULL`), FK e índices                                                                       |
+| `20260919213035_add_cards_recurring_rules` | enum `CardBrand`, colunas `cardId`/`recurringRuleId`, tabelas `cards` e `recurring_rules`                                                              |
+| `20260919223000_despesa_bucket_cartao`     | **backfill**: cria cartões padrão por dono (idempotente), deixa `category` anulável, converte `NUBANK`/`ITAUCARD` → `cardId`, recria o enum `Category` |
+| `20260920090000_add_card_logo_url`         | `cards.logoUrl`                                                                                                                                        |
+| `20260920162236_add_installment_group`     | `transactions.installmentGroupId` + índice, com backfill que agrupa por (dono, descrição sem prefixo `i/N`, valor, tipo) quando há 2+ ocorrências      |
+| `20260927000000_enable_rls`                | habilita Row Level Security e cria policies (ver [seção 10](#10-isolamento-por-usuário-e-rls))                                                         |
+
+As migrations de backfill são **idempotentes** (`WHERE NOT EXISTS`, `DROP POLICY IF EXISTS`),
+para poderem ser aplicadas com segurança sobre bancos que já tinham os dados.
+
+---
+
+## 6. Regras de negócio
+
+Esta seção é a referência canônica. Todas as regras vivem em `packages/shared/src/domain`
+e são aplicadas pela API; o front revalida parte delas para dar feedback imediato.
+
+### 6.1 Vocabulário
+
+| Conceito              | Enum              | Significado                                            |
+| --------------------- | ----------------- | ------------------------------------------------------ |
+| `receita`             | `TransactionType` | entrada de dinheiro                                    |
+| `despesa`             | `TransactionType` | saída de dinheiro                                      |
+| `devedor`             | `TransactionType` | valor a **receber** de terceiros                       |
+| `contas_fixas`        | `Category`        | despesa recorrente previsível (aluguel, luz, internet) |
+| `outros`              | `Category`        | despesa avulsa                                         |
+| `receita`             | `Category`        | categoria de entradas                                  |
+| `devedores`           | `Category`        | categoria de valores a receber                         |
+| `nubank` / `itaucard` | `PaymentMethod`   | por onde o devedor vai pagar                           |
+
+O mapeamento **categoria → tipo** é fixo e centraliza a coerência do formulário:
+
+| Categoria      | Tipo obrigatório |
+| -------------- | ---------------- |
+| `contas_fixas` | `despesa`        |
+| `outros`       | `despesa`        |
+| `receita`      | `receita`        |
+| `devedores`    | `devedor`        |
+
+`devedor` é o único tipo que carrega `paymentMethod`, e `devedores` é a única categoria
+que aceita `paymentMethod`.
+
+### 6.2 Regra do bucket: categoria **ou** cartão
+
+Esta é a regra central do sistema de despesas. Uma despesa pertence a **exatamente um**
+bucket de classificação:
+
+```
+bucket = CATEGORIA  (contas_fixas | outros)     → category = '...', cardId = null
+      OU
+bucket = CARTÃO     (nubank | itaucard | outros) → category = null,  cardId = '<id>'
+```
+
+Nunca os dois, nunca nenhum. No banco isso se manifesta como `category` anulável: quando
+`category IS NULL`, a classificação vem do cartão. É por isso que `Category` historicamente
+tinha valores de bandeira, e a migration `20260919223000` converteu os dados existentes
+para essa representação.
+
+### 6.3 Validação de transação
+
+`validateTransactionInput(input)` em `packages/shared/src/domain/rules.ts`. As regras
+rodam **nesta ordem** e a primeira que falha interrompe (o erro carrega um
+`DomainErrorCode`):
+
+| #   | Condição                                                            | `DomainErrorCode`            | Mensagem                                                                               |
+| --- | ------------------------------------------------------------------- | ---------------------------- | -------------------------------------------------------------------------------------- |
+| 1   | `month` não inteiro ou fora de 1–12                                 | `INVALID_MONTH`              | `Mês inválido: {month}. Esperado 1-12.`                                                |
+| 2   | `year` não inteiro ou fora de 1900–2200                             | `INVALID_YEAR`               | `Ano inválido: {year}.`                                                                |
+| 3   | `amountCents` não é inteiro seguro ou `≤ 0`                         | `INVALID_AMOUNT`             | `Valor inválido: … Deve ser um inteiro de centavos positivo.`                          |
+| 4   | `category === null` **e** (não é `despesa` **ou** não tem `cardId`) | `CATEGORY_REQUIRED`          | `Toda transação exige uma categoria (ou um cartão, para despesas).`                    |
+| 5   | `category !== null` e `type ≠ CATEGORY_TO_TYPE[category]`           | `CATEGORY_TYPE_MISMATCH`     | `Tipo "{type}" incompatível com a categoria "{category}" (esperado "{expectedType}").` |
+| 6   | `despesa` com `category` **e** `cardId`                             | `CATEGORY_CARD_CONFLICT`     | `Uma despesa deve pertencer a uma categoria fixa OU a um cartão, não a ambos.`         |
+| 7   | `devedor` sem `paymentMethod`                                       | `PAYMENT_METHOD_REQUIRED`    | `Transações do tipo "devedor" exigem um método de pagamento (cartão).`                 |
+| 8   | tipo diferente de `devedor` com `paymentMethod`                     | `PAYMENT_METHOD_NOT_ALLOWED` | `Método de pagamento "{pm}" só é permitido para transações do tipo "devedor".`         |
+| 9   | `paymentMethod` com categoria cujo tipo não é `devedor`             | `PAYMENT_METHOD_NOT_ALLOWED` | `Categoria "{category}" não permite método de pagamento. Use a categoria "devedores".` |
+
+A regra 4 é o que garante que `category: null` só pode aparecer no caso "despesa com
+cartão" — nem receita nem devedor podem ficar sem categoria.
+
+### 6.4 Coerência entre método de pagamento e bandeira
+
+`validateCardPaymentConsistency({ paymentMethod, cardBrand })` roda logo após a validação
+anterior, no create e no update. Mapeia bandeira → método esperado:
+
+| Bandeira do cartão | Método esperado                                       |
+| ------------------ | ----------------------------------------------------- |
+| `nubank`           | `nubank`                                              |
+| `itaucard`         | `itaucard`                                            |
+| `outros`           | `null` — **sempre rejeita** se houver `paymentMethod` |
+
+Duas tolerâncias deliberadas: se não houver `paymentMethod`, ou se não houver
+`cardBrand` (cartão usado só como etiqueta de bucket), a função retorna sem reclamar.
+Quando há divergência, o erro é `CARD_METHOD_MISMATCH`.
+
+### 6.5 Dinheiro
+
+Valores são sempre **centavos inteiros** no banco e no domínio. Ponto flutuante só
+aparece nas bordas de entrada/saída do usuário.
+
+```ts
+toCents(reais) = Math.round(reais * 100);
+toReais(cents) = cents / 100;
+```
+
+A classe `Money` encapsula isso de forma imutável (`Money.fromCents`, `Money.fromReais`,
+`zero`, `add`, `subtract`, `isPositive`, `isNegative`, `isZero`, `toString`), lançando
+`RangeError` em entradas não inteiras / não finitas. A formatação usa um único
+`Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' })`, o que garante
+`R$ 1.234,56` em qualquer tela. No front, `lib/format.ts` espelha essas conversões e
+`parseReaisToCents` aceita tanto `"R$ 1.234,56"` quanto `"1234.56"`.
+
+### 6.6 Cálculo do resumo mensal
+
+`calculateSummary(transactions)` é uma função **pura** sobre a lista do mês. Devolve
+`TransactionSummary` com seis campos:
+
+```
+totalIncomeCents   = Σ amountCents  para type == receita
+totalExpenseCents  = Σ amountCents  para type == despesa
+balanceCents       = totalIncomeCents − totalExpenseCents
+totalDebtorsCents  = Σ amountCents  para type == devedor
+paidDebtorsCents   = Σ amountCents  para type == devedor && isPaid
+unpaidDebtorsCents = Σ amountCents  para type == devedor && !isPaid
+```
+
+**Decisão de negócio central: `devedor` não entra no saldo.** Um valor a receber não é
+dinheiro disponível, então `balanceCents` é sempre receitas − despesas. Devedores têm
+seu próprio par (`paid` / `unpaid`) porque o que importa ali é _quanto ainda falta
+receber_, não o impacto no caixa. Por isso o card "A receber" no dashboard mostra
+`pago X · pendente Y`.
+
+A função faz exaustividade de tipos em tempo de compilação (`tx.type satisfies never`):
+um `type` novo no enum gera erro de compilação até que o `switch` seja atualizado.
+Um tipo desconhecido em tempo de execução lança `Tipo de transação desconhecido: …`.
+
+### 6.7 Parcelas
+
+Ao criar um lançamento com mais de uma parcela, a API **materializa N transações reais**
+(no plural, no mesmo request) — não há linha "parcelado" pendente.
+
+**Expansão.** `expandRecurrence(config)` em `domain/recurrence.ts`:
+
+```
+addMonths(month, year, amount):
+  total     = year * 12 + (month - 1) + amount
+  nextYear  = floor(total / 12)
+  nextMonth = (total % 12) + 1
+```
+
+`addMonths` é a base da virada de ano: nunca produz mês 0 nem 13.
+
+```
+expandRecurrence({ startMonth, startYear, installments, startFrom = 1 }):
+  count = installments − startFrom + 1
+  para i em [0, count):
+    installment = startFrom + i
+    { month, year } = addMonths(startMonth, startYear, i)
+    → { month, year, installment }
+```
+
+Validações (lançam `RangeError`): `installments` inteiro `≥ 1`; `startFrom` inteiro
+`≥ 1`; e `startFrom ≤ installments`.
+
+_Exemplo canônico:_ `{ startMonth: 11, startYear: 2026, installments: 12, startFrom: 4 }`
+→ 9 instâncias (`4/12` … `12/12`), meses `[11,12,1,2,3,4,5,6,7]`, anos
+`[2026, 2026, 2027 × 7]`. É o caso "comprei um celular em novembro, parcelei em 12,
+já paguei 3".
+
+**Descrição serializada.** `buildInstallmentDescription(base, installment, total)`
+produz `` `${installment}/${total} ${base}` `` — `1/12 Celular`, `12/12 Celular`.
+Quando é uma única parcela, a descrição original é preservada sem prefixo.
+
+**Grupo.** Se houver mais de uma instância, um `randomUUID()` é gerado e gravado em
+`installmentGroupId` de todas as parcelas. Lançamento sem recorrência **não** recebe grupo.
+
+**Demais campos na expansão.** `dueDate`, `amountCents`, `type`, `category`,
+`paymentMethod` e `cardId` são **copiados para todas as parcelas**; `month` e `year`
+mudam conforme a expansão. Cada parcela é validada individualmente
+(`validateTransactionInput` + `validateCardPaymentConsistency`) **antes** de qualquer
+escrita — uma série inválida inteira é rejeitada, sem resíduo no banco.
+
+A resposta é um array ordenado por mês de referência (`year` → `month` → `dueDate`).
+
+### 6.8 Edição e exclusão em série
+
+**Edição** (`PATCH /transactions/:id` com `applyToAll: true`):
+
+```
+SERIES_FIELDS = description, amountCents, type, category, paymentMethod, cardId, dueDate
+INDIVIDUAL    = month, year, isPaid
+```
+
+Se `applyToAll` e a transação tiver `installmentGroupId`, o patch é filtrado para
+`SERIES_FIELDS` e:
+
+1. o registro existente é mesclado com o patch e **validado**;
+2. `updateMany({ installmentGroupId, ownerId }, seriesPatch)`;
+3. a transação é relida e devolvida.
+
+Caso contrário (sem grupo, ou patch só com `month`/`year`/`isPaid`), o fluxo é
+**individual**: merge + validação + `update` de uma linha.
+
+**Regra de negócio:** o mês, o ano e o status de pagamento são **sempre individuais**.
+Parcelas de um celular têm vencimentos e pagamentos distintos; propagar `isPaid` para
+todas marcaria como pagas as que ainda não venceram. O front reflete isso com o texto
+"Mês, ano e status de pagamento continuam individuais em cada parcela."
+
+**Exclusão** (`DELETE /transactions/:id?scope=one|series`): `scope=series` com
+`installmentGroupId` apaga o grupo inteiro via `deleteMany`; qualquer outro valor de
+`scope` apaga só a linha. O front pede a confirmação do escopo em um modal.
+
+### 6.9 Regras recorrentes
+
+Uma regra é uma **descrição declarativa** de um lançamento que se repete, não um
+gerador de dados. Ela não cria transações.
+
+**Materialização no relatório.** `ListMonthlyReportUseCase` carrega as regras do dono e,
+para cada uma:
+
+```
+shouldMaterializeRule(rule, month, year):
+  se !rule.isActive                              → false
+  startsAfter = year > rule.startYear
+            || (year === rule.startYear && month >= rule.startMonth)
+  → startsAfter
+```
+
+Não há data de término: uma regra ativa vale de `startMonth/startYear` em diante.
+
+```
+coveredByRule(transactions, ruleId, month, year):
+  transactions.some(t => t.recurringRuleId === ruleId && t.month === month && t.year === year)
+```
+
+`coveredByRule` garante **idempotência**: se o usuário já materializou manualmente o
+lançamento daquele mês (uma transação real apontando para a regra), a linha sintética não
+é duplicada.
+
+**Linha sintética.** Quando materializada, a regra entra no relatório com:
+
+| Campo                     | Valor                                                            |
+| ------------------------- | ---------------------------------------------------------------- |
+| `id`                      | `` `${rule.id}:${month}:${year}` `` (id sintético, não é `cuid`) |
+| `paymentMethod`           | `null`                                                           |
+| `dueDate`                 | `null`                                                           |
+| `isPaid`                  | `false`                                                          |
+| `createdAt` / `updatedAt` | da própria regra                                                 |
+
+**O detalhe mais importante:** a linha sintética entra em `calculateSummary` mas **não é
+retornada em `report.transactions`**. Ou seja, ela muda o total de receitas/despesas/a
+receber do mês, mas não aparece como linha clicável na tabela.
+
+_Por quê?_ Se a linha fosse retornada, o usuário veria "Salário" na lista e poderia
+tentar marcar como pago, editar ou excluir um id que não existe no banco — um bug
+garantido. Mantendo a linha sintética confinedida ao resumo, a projeção para o mês
+continua correta e a lista só contém transações reais, que são editáveis.
+
+A linha também respeita os filtros: `matchesQuery` compara `search` (case-insensitive
+em `description`), `type`, `category` e `isPaid`, de forma idêntica às transações reais.
+
+**Imutabilidade do início.** `startMonth`/`startYear` não existem em `RecurringRuleUpdate`
+nem em `UpdateRecurringRuleDto` — a data de início é definida na criação e nunca muda.
+Isso evita que uma regra já projetada para meses passados produza valores incoerentes.
+
+### 6.10 Cartões
+
+**Cartão é etiqueta + bucket + método de pagamento.** Criar um cartão não gera
+transações; ele é apenas referenciado.
+
+**Normalização no create/update:** `name.trim()`, `last4?.trim() ?? null`,
+`color?.trim() ?? null`, `logoUrl?.trim() ?? null`, `isDefault ?? false`.
+
+**Logo por bandeira (lazy-install).** O arquivo da bandeira é lido do bundle
+(`prisma/logos/{nubank,itaucard}.png`, com fallback para `apps/api/dist/prisma/logos/`
+no layout Vercel) e a URL pública `/{API_PREFIX}/cards/logos/{brand}` é gravada em
+`logoUrl`. A instalação acontece:
+
+- na criação do cartão, se `logoUrl` não vier informado;
+- **preenchimento preguiçoso** em `findByIdAndOwner` e `findAllByOwner`, se um cartão
+  antigo (ou criado fora do app) ainda não tem logo — a correção é persistida;
+- no update, se a bandeira efetiva ficar sem logo.
+
+O endpoint serve o PNG com `Cache-Control: public, max-age=31536000, immutable`.
+`havan.png` existe no diretório mas **não** é resolvido por `readBrandLogo` (só
+`nubank` e `itaucard` são), então `GET /cards/logos/havan` responde 404 — o arquivo está
+versionado como reserva.
+
+**Bandeira `OTHERS` não tem logo** e, por [6.4](#64-coerência-entre-método-de-pagamento-e-bandeira),
+não pode ser usada como `paymentMethod` de devedor.
+
+### 6.11 Isolamento por usuário
+
+Toda consulta de repository recebe `ownerId` e o inclui no `where`. `findByIdAndOwner`,
+`updateByIdAndOwner` e `deleteByIdAndOwner` usam `findFirst`/`deleteMany` com
+`{ id, ownerId }` — então um id de outro usuário simplesmente **não é encontrado**
+(404), nunca "atualizado" nem "vazado". Os specs cobrem isso explicitamente
+(casos "retorna NotFound quando a transação não pertence ao dono").
+
+`ownerId` nunca vem do body: é extraído do token pelo decorator `@CurrentUser()`.
+
+### 6.12 Projeção de datas
+
+`dueDate` é coluna `DATE`, mas trafega como string `yyyy-mm-dd` no contrato:
+
+```
+gravação:  toDbDueDate("2026-09-30") → new Date(Date.UTC(2026, 8, 30))
+leitura:   toIsoDate(Date)            → date.toISOString().slice(0, 10)
+```
+
+Construir em **UTC** é o que impede o off-by-one clássico: em `America/Sao_Paulo`,
+`new Date(2026, 8, 30)` (meio-dia local) gravado como `DATE` seria truncado para o dia
+29 em algumas combinações de driver.
+
+---
+
+## 7. Endpoints da API
+
+Prefixo global = `API_PREFIX` (padrão `api`), definido em `main.ts` via
+`app.setGlobalPrefix(...)`. **16 rotas.** Tudo exige `Authorization: Bearer <token>`,
+exceto o que tem `@Public()`.
+
+### 7.1 Auth — `/api/auth`
+
+| Método | Rota             | Auth    | Body          | Sucesso                                           |
+| ------ | ---------------- | ------- | ------------- | ------------------------------------------------- |
+| `POST` | `/auth/register` | pública | `RegisterDto` | `201` `{ user, tokens }`                          |
+| `POST` | `/auth/login`    | pública | `LoginDto`    | `200` `{ user, tokens }`                          |
+| `GET`  | `/auth/me`       | JWT     | —             | `200` `{ id, name, email, createdAt, updatedAt }` |
+
+`RegisterDto`: `name` 2–80, `email` válido até 160, `password` 8–128 **e** com regex
+`/^(?=.*[a-zA-Z])(?=.*\d)/` ("A senha deve conter letras e números.").
+`LoginDto`: `email` normalizado com `@Transform(trim + toLowerCase)`, `password` 1–128.
+
+A resposta de auth é `{ user, tokens: { accessToken } }`. **Não há refresh token** — o
+JWT expira e o usuário faz login de novo. `passwordHash` nunca é serializado: o
+`PrismaUserRepository.toDomain` o remove, e o `LoginUseCase` ainda o descarta por
+destructuring antes de devolver.
+
+### 7.2 Cards — `/api/cards`
+
+| Método   | Rota                  | Auth        | Detalhe                                                                             |
+| -------- | --------------------- | ----------- | ----------------------------------------------------------------------------------- |
+| `POST`   | `/cards`              | JWT         | `CreateCardDto` → `201`                                                             |
+| `GET`    | `/cards`              | JWT         | `200` `Card[]` ordenado por `isDefault desc, name asc`                              |
+| `GET`    | `/cards/logos/:brand` | **pública** | PNG, `Cache-Control: immutable`; `404` se bandeira não permitida ou arquivo ausente |
+| `PATCH`  | `/cards/:id`          | JWT         | `UpdateCardDto` (todos opcionais) → `200`                                           |
+| `DELETE` | `/cards/:id`          | JWT         | `204`                                                                               |
+
+`CreateCardDto`: `name` 1–60, `brand` precisa ser `CardBrand` **e** estar em `CARD_BRANDS`,
+`last4` opcional com `/^\d{4}$/`, `color` opcional com `/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/`,
+`isDefault` opcional booleano (coerção por `@Transform(toBool)`, que trata
+`"true"`/`"false"`). **`CreateCardDto` não aceita `logoUrl`** — a logo é responsabilidade
+da bandeira, resolvida no servidor.
+
+### 7.3 Recurring rules — `/api/recurring-rules`
+
+| Método   | Rota                   | Auth | Detalhe                          |
+| -------- | ---------------------- | ---- | -------------------------------- |
+| `POST`   | `/recurring-rules`     | JWT  | `CreateRecurringRuleDto` → `201` |
+| `GET`    | `/recurring-rules`     | JWT  | `200` `RecurringRule[]`          |
+| `PATCH`  | `/recurring-rules/:id` | JWT  | `UpdateRecurringRuleDto` → `200` |
+| `DELETE` | `/recurring-rules/:id` | JWT  | `204`                            |
+
+`CreateRecurringRuleDto`: `description` 1–200, `amountCents` int `≥ 1`, `type` em
+`TRANSACTION_TYPES`, `category` **obrigatório** em `CATEGORIES`, `startMonth` 1–12,
+`startYear` 2000–2200, `isActive` opcional. `UpdateRecurringRuleDto` aceita apenas
+`description`, `amountCents`, `type`, `category`, `isActive` — ver
+[6.9](#69-regras-recorrentes).
+
+### 7.4 Transactions — `/api/transactions`
+
+| Método   | Rota                                  | Auth | Detalhe                                                       |
+| -------- | ------------------------------------- | ---- | ------------------------------------------------------------- |
+| `GET`    | `/transactions/monthly`               | JWT  | `ListMonthlyReportQueryDto` → `MonthlyReport`                 |
+| `POST`   | `/transactions`                       | JWT  | `CreateTransactionDto` → `201` `{ transactions[] }`           |
+| `PATCH`  | `/transactions/:id`                   | JWT  | `UpdateTransactionDto` (+ `applyToAll`) → `200` `Transaction` |
+| `DELETE` | `/transactions/:id?scope=one\|series` | JWT  | `204`                                                         |
+
+**Relatório mensal.** `month` e `year` são opcionais e caem no mês/ano corrente
+(avaliados no carregamento do módulo). Filtros opcionais: `search` (1–200),
+`type`, `category`, `isPaid`. A ordenação é `dueDate asc, createdAt asc`; `search` usa
+`contains` com `mode: 'insensitive'`.
+
+Resposta:
+
+```ts
+interface MonthlyReport {
+  month: Month;
+  year: number;
+  transactions: Transaction[]; // só transações reais
+  summary: TransactionSummary; // inclui as linhas sintéticas das regras
+}
+```
+
+**Recorrência no create.** `CreateTransactionDto.recurrence` (opcional, validado com
+`@ValidateNested`) traz `installments` (int, 1–240) e `startFrom` (opcional, 1–240),
+sujeito ao validador de classe `StartFromWithinInstallments`, que rejeita
+`startFrom > installments` com a mensagem `Parcela inicial não pode ser maior que o
+total de parcelas.`
+
+**`applyToAll`.** No `PATCH`, `applyToAll: true` dispara a propagação em série
+([6.8](#68-edição-e-exclusão-em-série)). O controller converte com
+`applyToSeries = dto.applyToAll === true`.
+
+**`toTransactionUpdate` usa `!== undefined`, não `in`.** Detalhe deliberado: com
+`useDefineForClassFields`, o `class-transformer` materializa todos os campos declarados,
+então `'x' in dto` seria sempre `true` e todo campo ausente viraria `null` — um update
+parcial zeraria `cardId`, `paymentMethod` e `dueDate`. Usando `!== undefined`, só entram
+chaves presentes, e um `null` explícito (enviado de propósito) é preservado, permitindo
+**limpar** esses campos.
+
+### 7.5 Health — `/api/health`
+
+| Método | Rota      | Auth        | Resposta                                      |
+| ------ | --------- | ----------- | --------------------------------------------- |
+| `GET`  | `/health` | **pública** | `{ status: "ok", timestamp: "2026-09-29T…" }` |
+
+Única rota sem use case: está declarada direto em `AppModule.controllers`.
+
+---
+
+## 8. Contrato de erro
+
+O `GlobalExceptionFilter` normaliza toda exceção em `ErrorResponse`
+(tipo compartilhado em `packages/shared/src/api/contract.ts`):
+
+```ts
+interface ErrorResponse {
+  statusCode: number;
+  message: string | string[];
+  error?: string;
+  domainCode?: string; // só em DomainValidationError
+}
+```
+
+Ordem de resolução:
+
+| Origem                  | Status                | `error`                                                       | Observação                                         |
+| ----------------------- | --------------------- | ------------------------------------------------------------- | -------------------------------------------------- |
+| `DomainValidationError` | `422`                 | `UnprocessableEntity`                                         | inclui `domainCode`                                |
+| `AppError`              | 404 / 409 / 401 / 403 | `kind` (`NOT_FOUND`, `CONFLICT`, `UNAUTHORIZED`, `FORBIDDEN`) | mapeado por `kind`                                 |
+| `HttpException` do Nest | original              | original                                                      | preserva o array de mensagens do `class-validator` |
+| qualquer outra          | `500`                 | `InternalServerError`                                         | loga stack no servidor                             |
+
+Erros `≥ 500` são logados com método, URL e stack via `Logger.error`.
+
+`DomainErrorCode` (`packages/shared`): `INVALID_MONTH`, `INVALID_YEAR`, `INVALID_AMOUNT`,
+`PAYMENT_METHOD_REQUIRED`, `PAYMENT_METHOD_NOT_ALLOWED`, `CATEGORY_TYPE_MISMATCH`,
+`CATEGORY_REQUIRED`, `CATEGORY_CARD_CONFLICT`, `MONTH_YEAR_REQUIRED`,
+`INVALID_CREDENTIALS`, `EMAIL_ALREADY_IN_USE`, `CARD_METHOD_MISMATCH`.
+
+O front usa `domainCode` apenas para diagnóstico: `ApiError` carrega `status`,
+`message` e `domainCode`, e `authErrorMessage(err, fallback)` escolhe entre a mensagem
+em português da API, uma mensagem de falha de rede (que sugere verificar se o
+dispositivo está na mesma rede) ou o fallback.
+
+### 8.1 `ValidationPipe` global
+
+`main.ts` registra `new ValidationPipe({ whitelist: true, transform: true,
+transformOptions: { enableImplicitConversion: false }, forbidNonWhitelisted: true })`.
+
+- `whitelist` remove propriedades não declaradas no DTO;
+- `forbidNonWhitelisted` **rejeita** a requisição se vier campo extra (422);
+- `enableImplicitConversion: false` desliga a coerção implícita — a conversão de query
+  string é explícita via `@Type(() => Number)`, evitando que `"abc"` vire `NaN` em
+  silêncio.
+
+---
+
+## 9. Autenticação e segurança
+
+### 9.1 Fluxo
+
+```
+POST /auth/register | /auth/login
+  → valida DTO (class-validator)
+  → use case normaliza email (trim + toLowerCase)
+  → PrismaUserRepository busca por email
+  → ScryptPasswordHasher.verify (só se o usuário existir)
+  → JwtTokenService.sign({ sub: user.id, email })
+  → 200/201 { user, tokens: { accessToken } }
+
+requisições seguintes
+  → Authorization: Bearer <accessToken>
+  → JwtStrategy valida assinatura e expiração
+  → validate(payload) → { userId, email }
+  → @CurrentUser() injeta no handler
+  → repository usa ownerId
+```
+
+### 9.2 Guard global
+
+`JwtAuthGuard` (`AuthGuard('jwt')`) é registrado como `APP_GUARD` em `app.module.ts`,
+ou seja, **aplica-se a todas as rotas por padrão**. Ele consulta
+`Reflector.getAllAndOverride(IS_PUBLIC_KEY, [handler, class])`: se a rota (ou a classe
+do controller) tem `@Public()`, o guard retorna `true` sem consultar o Passport. É o
+padrão _deny-by-default_ — esquecer de proteger uma rota nova é impossível, só o
+oposto acontece.
+
+`@CurrentUser()` extrai `request.user` e, se ausente, lança
+`CurrentUser decorator usado sem guard de autenticação.` — falha barulhenta em vez de
+`ownerId: undefined` chegando ao banco.
+
+### 9.3 Hash de senha — scrypt
+
+`ScryptPasswordHasher` usa apenas `node:crypto`, sem dependência nativa:
+
+| Parâmetro   | Valor                                             |
+| ----------- | ------------------------------------------------- |
+| algoritmo   | `crypto.scrypt`                                   |
+| `N` (custo) | `1 << 14` = **16384** (recomendação OWASP)        |
+| `r`         | 8                                                 |
+| `p`         | 1                                                 |
+| `keylen`    | 64 bytes                                          |
+| `maxmem`    | 64 MB                                             |
+| salt        | `randomBytes(16)` por hash                        |
+| formato     | `scrypt$` + `saltHex` + `$` + `keyHex` (3 partes) |
+
+A verificação faz `split('$')`, recusa qualquer coisa que não tenha exatamente 3 partes
+com prefixo `scrypt`, deriva com o mesmo custo e compara com
+`crypto.timingSafeEqual` — **comparação em tempo constante**, sem vazamento por tempo.
+Como o comprimento da chave derivada é lido do hash armazenado
+(`expected.length || KEY_LENGTH`), o formato tolera chaves de tamanhos diferentes.
+
+`BCRYPT_SALT_ROUNDS` aparece na configuração e no `.env`, mas **não é consumido pelo
+hasher** — é herança de nomenclatura. O custo real é o `N = 16384` fixo no código.
+
+O `prisma/seed.ts` replica exatamente o mesmo algoritmo e formato, de modo que a senha
+do usuário demo funciona igual em qualquer ambiente.
+
+### 9.4 Anti-enumeração de contas
+
+`LoginUseCase` é deliberadamente indistinguível nos dois casos de falha:
+
+- e-mail inexistente → `UnauthorizedError('Email ou senha inválidos.')`
+- senha errada → **a mesma** mensagem
+
+E, quando o usuário não existe, `hasher.verify` **não é chamado** — o tempo de resposta
+não revela se o e-mail está cadastrado. A única exceção de mensagem é o
+`ConflictError('Email já cadastrado.')` no registro, que é necessário para dar
+feedback de UX e não revela nada (a pessoa acabou de digitar o e-mail).
+
+---
+
+## 10. Isolamento por usuário e RLS
+
+Há **duas camadas** de isolamento, independentes.
+
+**Camada 1 — aplicação (ativa).** Todo repository recebe `ownerId` do JWT e o inclui no
+`where`. É o que está em produção e o que os 49 testes da API exercitam.
+
+**Camada 2 — RLS no Postgres** (migration `20260927000000_enable_rls`). Habilita Row
+Level Security em `users`, `transactions`, `cards` e `recurring_rules` e cria policies
+apenas para o role `authenticated`, baseadas em `auth.uid()`:
+
+| Tabela            | Policy                | Operação | Condição                                 |
+| ----------------- | --------------------- | -------- | ---------------------------------------- |
+| `users`           | `users_read_own`      | `SELECT` | `auth.uid()::text = id`                  |
+| `users`           | `users_update_own`    | `UPDATE` | `auth.uid()::text = id` (+ `with check`) |
+| `users`           | `users_delete_own`    | `DELETE` | `auth.uid()::text = id`                  |
+| `cards`           | `cards_own`           | `ALL`    | `ownerId = auth.uid()::text`             |
+| `transactions`    | `transactions_own`    | `ALL`    | `ownerId = auth.uid()::text`             |
+| `recurring_rules` | `recurring_rules_own` | `ALL`    | `ownerId = auth.uid()::text`             |
+
+Detalhes importantes:
+
+- **Não há policy de `INSERT` em `users`.** O cadastro de conta só acontece pela API.
+- **RLS habilitada, não `FORCE`**, e a API conecta como role com `BYPASSRLS` — então o
+  **comportamento da API não muda**. A RLS existe para proteger um eventual _Data API /
+  PostgREST_ (Supabase) exposto sobre o mesmo banco, onde o `auth.uid()` vem do JWT do
+  cliente em vez do header da API.
+- As policies são criadas **somente se `auth.uid()` existir** no banco. Em um PostgreSQL
+  sem Supabase, a migration apenas habilita RLS e emite um `RAISE NOTICE`.
+- Cada policy é precedida de `DROP POLICY IF EXISTS`, tornando a migration idempotente.
+
+---
+
+## 11. Front-end
+
+### 11.1 Rotas
+
+| Rota         | Comportamento                                                                                                                                     |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/`          | Client component que faz `router.replace('/dashboard')` se há token, senão `/login`. Renderiza `null` — há um flash de página vazia no hard load. |
+| `/login`     | Formulário de e-mail/senha → `POST /auth/login` → grava sessão → `/dashboard`                                                                     |
+| `/register`  | Formulário de nome/e-mail/senha → `POST /auth/register` → grava sessão → `/dashboard`                                                             |
+| `/dashboard` | Relatório mensal completo                                                                                                                         |
+| `/settings`  | Gerenciadores de cartões e regras recorrentes                                                                                                     |
+
+`app/layout.tsx` é o **único Server Component** do app. Todo o restante é
+`'use client'`. O metadata vive só aqui:
+
+```ts
+title: { default: 'WalletControl — Controle financeiro pessoal', template: '%s · WalletControl' }
+```
+
+O `<html>` tem `lang="pt-BR"` e `suppressHydrationWarning` (obrigatório para o
+`next-themes`, que escreve a classe antes da hidratação).
+
+### 11.2 Guarda de autenticação
+
+Client-side, no `useEffect`: sem token no `localStorage` → `router.replace('/login')`,
+enquanto isso um `Spinner` em tela cheia. Não existe `middleware.ts` nem verificação no
+servidor — a segurança real está na API (o guard global rejeita qualquer requisição sem
+JWT). O front lê o nome do usuário do `localStorage` via `getStoredUser()` e **nunca
+chama `GET /auth/me`**.
+
+### 11.3 Sessão
+
+`lib/api.ts` gerencia o token sem cookie e sem `httpOnly`:
+
+```ts
+const TOKEN_KEY = 'walletcontrol.token';
+const USER_KEY = 'walletcontrol.user';
+```
+
+> A chave mudou de `valletcontrol.*` para `walletcontrol.*` no rename. Quem tinha
+> sessão salva no navegador precisa **entrar de novo** uma vez — não há migração
+> transparente das chaves.
+
+`api<T>(path, options)` é o único caminho de requisição:
+
+1. `auth` padrão `true` → anexa `Authorization: Bearer <token>` se houver token;
+2. `Content-Type: application/json` só quando o body **não** é `FormData` (para o
+   browser montar o boundary do multipart);
+3. `204` → retorna `undefined` (compatível com os deletes);
+4. corpo não-JSON → `null`, e um `!res.ok` vira `ApiError(status, message, domainCode)`;
+5. `ApiError` distingue falha HTTP de `TypeError` (falha de rede), que é o que permite a
+   mensagem "não foi possível conectar ao servidor" no `authErrorMessage`.
+
+`API_ORIGIN` é derivado de `API_URL` removendo o sufixo `/api`, e `resolveAssetUrl(path)`
+transforma as URLs relativas de logo (`/api/cards/logos/nubank`) em absolutas — é o que
+permite que o front na LAN carregue logos servidas pela API.
+
+### 11.4 Dados com TanStack Query
+
+```
+reportKey(params)         = ['transactions', 'monthly', params]
+cardsKey                  = ['cards']
+recurringRulesKey         = ['recurring-rules']
+```
+
+`params` inteiro é embutido na key do relatório, então cada combinação de filtro é uma
+entrada de cache própria. `defaultOptions.queries`: `staleTime: 30_000`, `retry: 1`,
+`refetchOnWindowFocus: false`.
+
+| Hook                                                      | Tipo     | Invalida no sucesso                            |
+| --------------------------------------------------------- | -------- | ---------------------------------------------- |
+| `useMonthlyReport(params)`                                | query    | —                                              |
+| `useCards()`                                              | query    | —                                              |
+| `useRecurringRules()`                                     | query    | —                                              |
+| `useCreateTransaction()`                                  | mutation | `['transactions']`                             |
+| `useUpdateTransaction()`                                  | mutation | `['transactions']`                             |
+| `useDeleteTransaction()`                                  | mutation | `['transactions']`                             |
+| `useCreateCard()` / `useUpdateCard()` / `useDeleteCard()` | mutation | `['cards']`                                    |
+| `useCreateRecurringRule()` / `useUpdate…` / `useDelete…`  | mutation | `['recurring-rules']` **e** `['transactions']` |
+
+As três mutations de regra invalidam também `['transactions']` porque alterar uma regra
+muda a projeção do resumo mensal — sem isso, o card de receitas ficaria defasado.
+
+`monthlyParams()` envia `isPaid` quando `!== undefined` (inclusive `false`) — é o que faz
+o filtro "Pendentes" funcionar; omitir o `false` faria o front pedir "todos".
+
+### 11.5 Dashboard
+
+- **Header** — logo, nome, primeiro nome do usuário, alternador de tema, atalho para
+  Configurações e Sair.
+- **MonthSelector** — `move(delta)` monta `new Date(year, month - 1 + delta, 1)`, o que
+  dá virada de ano automática; o rótulo usa `formatMonthYear` com `capitalize` para
+  "Setembro 2026".
+- **SummaryCards** — 4 tiles: Receitas (`emerald`), Despesas (`rose`), Saldo (vermelho
+  se negativo) e A receber (`amber`, com detalhe `pago X · pendente Y`). Skeletons
+  durante o carregamento.
+- **FiltersBar** — busca com **debounce de 350 ms** (via `setTimeout` com ref,
+  sincronizado de volta por `useEffect`); selects de tipo, categoria e pago/pendente
+  disparam imediatamente. **A lista de categorias depende do tipo**:
+  `CATEGORIES.filter(c => CATEGORY_TO_TYPE[c] === filters.type)`, e trocar o tipo
+  **reseta a categoria** para `undefined`. Botão "Limpar" desabilitado quando não há
+  filtro.
+- **TransactionsTable** — botão circular de pago/pendente (fica `line-through` quando
+  pago), badges de tipo e de categoria **ou** chip de cartão (quando `category` é nula,
+  resolve o cartão via `cardId`), vencimento, valor com sinal, editar e excluir. Sem
+  paginação: o mês inteiro filtrado é renderizado em uma lista.
+- **CategoryBreakdown** — agrega **no cliente** (a API não devolve breakdown):
+  `key = t.category ?? t.cardId ?? 'sem-categoria'`, ordena decrescente e desenha barras
+  com `width = (cents / total) * 100` (com `total` mínimo 1 para evitar divisão por zero).
+- **TransactionForm** — o formulário mais denso do app; ver [11.6](#116-formulário-de-transação).
+- **Modal de exclusão** — muda conforme a transação ter `installmentGroupId`: nesse caso
+  oferece "Apenas esta parcela" **e** "Todas as parcelas"; senão, confirmação simples.
+
+### 11.6 Formulário de transação
+
+O estado local é um `Draft` de **strings** (o input de valor é texto livre em pt-BR) e
+é convertido para o payload só no `submit`.
+
+**Regras aplicadas na UI, espelhando o domínio:**
+
+- Trocar o **tipo** limpa `paymentMethod`, `cardId` e recoloca a primeira categoria
+  válida do novo tipo.
+- Escolher o **bucket da despesa** (`onExpenseBucketChange`) faz tudo de uma vez: se o
+  valor é um id de cartão, grava `cardId` **e** `category: 'outros'` (que será
+  normalizado para `null` no submit); senão grava `category` e limpa `cardId`. Isso é a
+  UI CDL da regra de bucket.
+- Escolher um **cartão** (`onCardChange`) preenche `paymentMethod` automaticamente via
+  `cardToPaymentMethod(brand)`.
+- No `submit`, `category` é forçada a `null` quando é despesa com `cardId`, e
+  `paymentMethod` é `null` para qualquer tipo diferente de `devedor`.
+- Erros client-side: descrição vazia, valor inválido, devedor sem método, mais de 12
+  parcelas, `startFrom < 1`, `startFrom > installments`.
+
+**Parcelas.** Os campos "Parcelas" e "Iniciar na parcela" só aparecem na **criação**
+(parcelas não podem ser adicionadas depois). O rótulo do botão é calculado para dizer
+exatamente o que vai acontecer:
+
+```
+1 parcela ...................................... "Criar"
+N parcelas, começando na 1 ..................... "Criar 12 lançamentos"
+N parcelas, começando na K ..................... "Criar 9 lançamentos (4/12 a 12/12)"
+```
+
+`recurrence` só é enviado no body quando `installments > 1`; `startFrom` só quando `> 1`.
+
+**Edição em série.** Se a transação tem `installmentGroupId`, o topo do modal ganha um
+seletor de duas opções — "Apenas esta parcela" / "Todas as parcelas" — com o aviso de que
+mês, ano e status de pagamento permanecem individuais. O valor vira `applyToAll`.
+
+### 11.7 Tema e estilos
+
+`globals.css` usa a abordagem CSS-first do Tailwind v4: `@import 'tailwindcss'` e um
+bloco `@theme` com tokens em **tríades HSL sem o wrapper `hsl()`** (convenção shadcn
+que faz os modificadores de opacidade tipo `bg-primary/15` funcionarem). O modo escuro
+redefine as mesmas variáveis dentro de `.dark`, e
+`@custom-variant dark (&:where(.dark, .dark *))` faz o variant ser dirigido por classe.
+
+`next-themes` com `attribute="class"`, `defaultTheme="system"` e `enableSystem`
+(persiste na chave padrão `theme`). O `ThemeToggle` renderiza um placeholder
+`<div className="size-9" />` até montar, evitando divergência de ícone entre servidor e
+cliente; oferece apenas alternância claro/escuro, sem opção de "voltar ao sistema".
+
+O design system está em `components/ui/index.tsx`: `Button` (5 variants × 3 tamanhos),
+`Card`, `CardHeader`, `CardTitle`, `Label`, `Input`, `Select` (com `ChevronDown`
+posicionado), `Badge` (4 tons), `Skeleton`, `Spinner` e `Modal`. O `Modal` fecha no
+`Escape`, trava o `scroll` do `body`, funciona como bottom-sheet no mobile
+(`items-end sm:items-center`) e **não** usa focus trap nem portal.
+
+`cn()` combina `clsx` + `tailwind-merge`, permitindo sobrescrever classes do componente
+ao passar `className`.
+
+---
+
+## 12. Seed e importação de planilhas
+
+### 12.1 Seed — `pnpm db:seed`
+
+Executa `tsx prisma/seed.ts`. Carrega `../../.env` e `apps/api/.env`, exige
+`DATABASE_URL` e é **idempotente** (tudo por `upsert`, com ids sintéticos derivados do
+id do usuário).
+
+**Usuário:** `demo@walletcontrol.app` / senha `senha-segura-123`, nome "Usuário Demo",
+com hash scrypt gerado no mesmo formato da produção.
+
+**2 cartões:** Nubank (final `4321`, cor `#8b5cf6`, `isDefault: true`) e Itaucard
+(final `9876`, cor `#f59e0b`). As logos de bandeira são instaladas após o create.
+
+**10 transações**, todas no mês/ano corrente, cobrindo todos os buckets e combinações:
+
+| #   | Descrição        | Valor    | Tipo    | Categoria      | Cartão                        | Venc. | Pago |
+| --- | ---------------- | -------- | ------- | -------------- | ----------------------------- | ----- | ---- |
+| 1   | Salário          | 4.500,00 | receita | `receita`      | —                             | 5     | sim  |
+| 2   | Freela projeto X | 1.200,00 | receita | `receita`      | —                             | 15    | não  |
+| 3   | Aluguel          | 1.800,00 | despesa | `contas_fixas` | —                             | 10    | sim  |
+| 4   | Conta de luz     | 320,00   | despesa | `contas_fixas` | —                             | 12    | sim  |
+| 5   | Internet         | 120,00   | despesa | `contas_fixas` | —                             | 20    | não  |
+| 6   | Mercado          | 540,00   | despesa | `null`         | Nubank                        | 3     | sim  |
+| 7   | Combustível      | 280,00   | despesa | `null`         | Itaucard                      | 25    | sim  |
+| 8   | Pizza com amigos | 180,00   | despesa | `outros`       | —                             | 22    | não  |
+| 9   | Compra Notebook  | 3.500,00 | devedor | `devedores`    | — (`paymentMethod: ITAUCARD`) | 27    | não  |
+| 10  | Venda Xbox       | 900,00   | devedor | `devedores`    | — (`paymentMethod: NUBANK`)   | 30    | sim  |
+
+> **Renomeação:** o e-mail do seed mudou de `demo@valletcontrol.app` para
+> `demo@walletcontrol.app`. Como o seed faz `upsert` **por e-mail**, o novo e-mail cria
+> um usuário **novo** e o antigo continua no banco. Se quiser limpar:
+> `DELETE FROM users WHERE email = 'demo@valletcontrol.app';` (as transações, cartões e
+> regras dele saem por `ON DELETE CASCADE`).
+
+### 12.2 Importador de planilhas — `import:spreadsheet`
+
+CLI independente (`tsx scripts/import-spreadsheet.ts`, usa **ExcelJS**), para tratar a
+planilha de controle financeiro real.
 
 ```bash
-# 1. Instalar dependências
+# dry-run (padrão) — só mostra o plano
+pnpm --filter @walletcontrol/api import:spreadsheet -- --file planilha.xlsx
+
+# grava de verdade
+pnpm --filter @walletcontrol/api import:spreadsheet -- --file planilha.xlsx --apply --email voce@exemplo.com --confirm
+
+# desfaz
+pnpm --filter @walletcontrol/api import:spreadsheet -- --rollback imports/spreadsheet-<ts>.json --confirm
+```
+
+Características:
+
+- **Dry-run por padrão.** Nada é escrito sem `--apply` **e** `--confirm`.
+- **Shift de −1 mês.** `shiftMonth(m, y, -1)` com `zeroBased = year * 12 + (month - 1) + amount`.
+  As abas (`JAN`…`DEZ`) representam o mês em que a conta **vence**, e o sistema
+  registra no mês de **competência**.
+- **Layout fixo por aba** (linhas 5–22 para despesas, 27+ para devedores, 28 para receita),
+  mapeando colunas para bucket:
+  - colunas 2,3,4 → `CONTAS_FIXAS`
+  - colunas 5,6,7 → despesa com `category: null` + cartão Nubank
+  - colunas 8,9,10 → despesa com `category: null` + cartão Itaucard
+  - colunas 11,12,13 → `OUTROS`
+  - linha 28, colunas 2/3 → receita
+  - linhas 27+, colunas 11/12/13 → devedores, com sub-seções detectadas por
+    `^Devedores Nubank` / `^Devedores Itau` e fim em `TOTAL`
+- **Parcelas.** `parseInstallment` casa `^(\d+)-(\d+)\s+(.+)$`, normaliza para `i/N base`
+  e agrupa por `installment:<base>:<cents>:<type>:<bucket>`, atribuindo um UUID por chave.
+- **Pago.** Aceita `x`, `sim`, `true`, `1`, `pago`, `paga`, `yes`, `y`, `✓`
+  (case-insensitive). **Receitas são sempre `isPaid: true`**.
+- **Valores.** Aceita número ou string; remove `R$`; se há `,` e não `.`, troca `,` por
+  `.`, senão remove `,`; `amountCents = Math.round(amount * 100)`.
+- Ignora linhas sem descrição, com descrição `TOTAL`, ou com valor `null`/`<= 0`.
+- **Uma única transação SQL** para todas as escritas (`$transaction`, `maxWait 10s`,
+  `timeout 120s`).
+- **Manifest de rollback** em `imports/spreadsheet-<timestamp>.json` com
+  `createdTransactionIds` e `createdCardIds` — o `--rollback` apaga exatamente esses ids.
+- Respeita `DATABASE_SSL_REJECT_UNAUTHORIZED=false` (remove `sslmode` da URL e desliga
+  a verificação do certificado).
+
+---
+
+## 13. Configuração e ambiente
+
+### 13.1 Variáveis
+
+`.env` fica na **raiz** do monorepo (a API carrega `../../.env` e depois
+`apps/api/.env`, que tem precedência). `.env.example` é o modelo commitado.
+`apps/web/.env.local` sobrescreve a URL da API para o ambiente local.
+
+| Variável                           | Obrigatória | Padrão                      | Descrição                                                                       |
+| ---------------------------------- | ----------- | --------------------------- | ------------------------------------------------------------------------------- |
+| `NODE_ENV`                         | não         | `development`               |                                                                                 |
+| `API_PORT`                         | não         | `3001`                      | `PORT` tem precedência                                                          |
+| `API_PREFIX`                       | **sim**     | —                           | prefixo global de rotas (padrão prático: `api`)                                 |
+| `DATABASE_URL`                     | **sim**     | —                           | `postgresql://…`                                                                |
+| `DATABASE_SSL_REJECT_UNAUTHORIZED` | não         | —                           | `false` remove `sslmode` e desliga a verificação do certificado                 |
+| `JWT_SECRET`                       | **sim**     | —                           | em produção: `openssl rand -base64 32` em secret manager                        |
+| `JWT_EXPIRES_IN`                   | não         | `7d`                        |                                                                                 |
+| `BCRYPT_SALT_ROUNDS`               | não         | `10`                        | **não consumido** pelo hasher (ver [9.3](#93-hash-de-senha--scrypt))            |
+| `ALLOWED_ORIGINS`                  | não         | `http://localhost:3000`     | lista separada por vírgula, usada no CORS                                       |
+| `NEXT_PUBLIC_API_URL`              | não         | `http://localhost:3001/api` | só no **front-end**: base das chamadas e da resolução de URLs relativas de logo |
+
+`configuration.ts` é **fail-fast**: `required()` lança
+`Variável de ambiente obrigatória ausente: X` no boot, e `int()` lança em valor não
+inteiro, em vez de silenciosamente usar `NaN`.
+
+`turbo.json` declara todas essas variáveis em `globalEnv`, para que mudar qualquer uma
+invalide o cache das tarefas.
+
+### 13.2 Nota sobre `DATABASE_URL` e o rename
+
+O `DATABASE_URL` continua referenciando o role e o banco **`valletcontrol`**:
+
+```
+DATABASE_URL=postgresql://valletcontrol:valletcontrol@localhost:5433/valletcontrol?schema=public
+```
+
+Isso foi **intencional**. O Postgres é externo (o `docker-compose` de apoio foi removido
+em `23c91a0`) e o mesmo nome está gravado como variável cifrada nos projetos Vercel.
+Renomear aqui exigiria renomear a role e o banco de verdade, e o resultado seria o mesmo
+com risco de quebrar o ambiente local e a produção. O nome é uma credencial de
+infraestrutura, não identidade de produto.
+
+Se um dia essa renomeação for desejada, o caminho é (executando com um role
+superusuário):
+
+```sql
+ALTER ROLE valletcontrol WITH LOGIN PASSWORD 'valletcontrol';
+ALTER DATABASE valletcontrol OWNER TO valletcontrol;
+ALTER DATABASE valletcontrol RENAME TO walletcontrol;
+ALTER ROLE valletcontrol RENAME TO walletcontrol;
+```
+
+e, em seguida, atualizar `DATABASE_URL` no `.env` **e** nos dois projetos Vercel.
+Sequência inversa (criar o novo, migrar, só então remover o antigo) é mais segura se
+houver dados que importem.
+
+### 13.3 CORS
+
+`app.enableCors({ origin: config.get('cors.allowedOrigins'), credentials: true })`.
+Para acesso pela rede local, inclua o IP da máquina na lista
+(ex.: `http://192.168.1.18:3000`).
+
+---
+
+## 14. Como rodar
+
+```bash
+# 0. pré-requisitos
+node -v   # >= 22.12.0
+pnpm -v   # >= 10
+
+# 1. dependências
 pnpm install
 
-# 2. Apontar DATABASE_URL, JWT_SECRET e NEXT_PUBLIC_API_URL no .env / apps/web/.env.local
+# 2. configurar
+cp .env.example .env
+# edite DATABASE_URL, API_PREFIX, JWT_SECRET e NEXT_PUBLIC_API_URL
 
-# 3. Migrar e popular (cria usuário demo + cartões + transações)
+# 3. banco: gerar o client, migrar e popular
+pnpm --filter @walletcontrol/api prisma:generate
 pnpm db:migrate
 pnpm db:seed
 
-# 4. Subir web + API (dev com watch)
-pnpm dev
+# 4. subir API e web (dois terminais, ou `pnpm dev` para os dois)
+pnpm dev:api    # http://localhost:3001/api
+pnpm dev:web    # http://localhost:3000
 ```
 
-Acesso: web em `http://localhost:3000` (ou pelo IP da LAN, ex. `http://192.168.1.10:3000`); API em `http://localhost:3001/api`; health em `GET /health`.
+Acesse `http://localhost:3000` e entre com `demo@walletcontrol.app` /
+`senha-segura-123` (após o seed).
 
-Usuário seed: `demo@valletcontrol.app` / `senha-segura-123`.
+**Acesso pela rede local (celular):** suba a API com o Bind em `0.0.0.0`, aponte
+`NEXT_PUBLIC_API_URL` (em `apps/web/.env.local` **e** na env da Vercel) para o IP da
+máquina, e adicione a origem em `ALLOWED_ORIGINS`. Se a conexão falhar, a mensagem de
+erro do login sugere exatamente essa verificação.
 
-## Comandos úteis (raiz)
+### 14.1 Deploy
 
-| Comando | Ação |
-|---|---|
-| `pnpm dev` / `pnpm dev:web` / `pnpm dev:api` | Sobe tudo ou apenas web/api |
-| `pnpm build` | Build de todos os pacotes (turbo) |
-| `pnpm test` | Testes da API (jest) e do shared (vitest) |
-| `pnpm lint` / `pnpm typecheck` | Lint e typecheck de todos os pacotes |
-| `pnpm db:migrate` / `pnpm db:seed` / `pnpm db:studio` | Migra, popula e abre o Studio do Prisma |
-| `pnpm clean` | Limpa artefatos de build |
+| Projeto                  | Diretório  | Comandos                                                                                                                                                                                     |
+| ------------------------ | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `walletcontrol-api`      | `apps/api` | Vercel detecta NestJS; `apps/api/vercel.json` define `installCommand` e `buildCommand` (que também copia `prisma/logos/*.png` para `dist/prisma/logos/`, necessário para o endpoint de logo) |
+| `walletcontrol-frontend` | `apps/web` | Next.js com `output: 'standalone'` e `transpilePackages: ['@walletcontrol/shared']`                                                                                                          |
 
-## Testes
+O `buildCommand` da API é:
 
-- **API** (`apps/api/src/**/*.spec.ts`, jest): **49 testes em 7 suítes** — autenticação (register/login), hasher scrypt, criação/edição/exclusão de transações (incl. séries e `applyToAll`), relatório mensal e DTO (`toTransactionUpdate`).
-- **Shared** (`packages/shared/src/domain/rules.spec.ts`, vitest): **18 testes** das regras puras de validação.
-- Web: sem suíte própria; `test` roda `tsc --noEmit`.
+```
+pnpm --filter @walletcontrol/shared build &&
+pnpm --filter @walletcontrol/api build &&
+mkdir -p dist/prisma/logos && cp prisma/logos/*.png dist/prisma/logos/
+```
 
-## Notas de implementação
+O último passo existe porque as logos são lidas do **bundle** em runtime (não há upload
+em disco — ver `13a0ba3`), e o `dist` do Nest não inclui arquivos que não são TypeScript.
 
-- `toTransactionUpdate` (DTO) usa guardas por valor (`!== undefined`), nunca `in`, porque com `useDefineForClassFields` o class-transformer cria todos os campos do DTO como `undefined` — o uso de `in` zeraria `cardId`/`paymentMethod`/`dueDate` em PATCH parciais.
-- Linhas sintéticas de regras recorrentes contam no resumo, mas não aparecem na tabela (quebrariam "marcar como pago" e a edição/exclusão real).
-- `formatMonthYear` e labels de mês vivem no shared; formatadores pt-BR reais em `apps/web/lib/format.ts`.
+A env `NEXT_PUBLIC_API_URL` do frontend precisa apontar para a URL pública da API.
+Como é uma variável `NEXT_PUBLIC_*`, ela é **embutida no bundle no build** — trocar o
+valor exige um novo deploy, não basta reiniciar.
+
+---
+
+## 15. Comandos
+
+Todos da raiz, via Turborepo:
+
+| Comando                         | O que faz                            |
+| ------------------------------- | ------------------------------------ |
+| `pnpm dev`                      | sobe api e web em watch              |
+| `pnpm dev:api` / `pnpm dev:web` | sobe um só                           |
+| `pnpm build`                    | compila shared → api → web           |
+| `pnpm test`                     | testes de todos os pacotes           |
+| `pnpm test:api`                 | só os testes da API                  |
+| `pnpm lint`                     | ESLint com as configs compartilhadas |
+| `pnpm typecheck`                | `tsc --noEmit` em todos              |
+| `pnpm format`                   | Prettier                             |
+| `pnpm db:migrate`               | `prisma migrate dev`                 |
+| `pnpm db:seed`                  | `prisma db seed`                     |
+| `pnpm db:studio`                | Prisma Studio                        |
+| `pnpm clean`                    | limpa builds e `node_modules`        |
+
+Comandos só da API (`pnpm --filter @walletcontrol/api …`):
+
+| Script               | O que faz                                                        |
+| -------------------- | ---------------------------------------------------------------- |
+| `prisma:generate`    | gera o client em `src/generated/prisma`                          |
+| `prisma:deploy`      | `prisma migrate deploy` (produção)                               |
+| `test:cov`           | Jest com cobertura                                               |
+| `import:spreadsheet` | importador de `.xlsx` (ver [12.2](#122-importador-de-planilhas)) |
+
+### 15.1 Verificação completa
+
+```bash
+pnpm build && pnpm test && pnpm lint && pnpm typecheck
+```
+
+Estado atual: **4/4 tarefas** de `build`, `test`, `lint` e `typecheck` passando.
+
+---
+
+## 16. Testes
+
+**67 testes no total, todos passando.**
+
+### 16.1 API — Jest, 7 suítes / 49 testes
+
+| Suíte                                  | Testes | Cobre                                                                                                                                                                                                                                |
+| -------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `create-transactions.use-case.spec.ts` | 16     | validação de negócio ponta a ponta do create, escopo por `ownerId`, expansão de recorrência (incluindo `startFrom`), bucket cartão-vs-categoria, coerência método/bandeira, cartão de outro dono, atribuição de `installmentGroupId` |
+| `update-transaction.use-case.spec.ts`  | 12     | update individual e em série, `NotFound` para transação de outro dono, propagação mantendo `month`/`year`/`isPaid` individuais, rejeição de série inválida antes de propagar, fallback para update individual                        |
+| `register.use-case.spec.ts`            | 5      | normalização de e-mail, emissão de token, `Conflict` sem chamar `create`, login remove o hash, **anti-enumeração** (mesma mensagem para usuário inexistente)                                                                         |
+| `scrypt-password-hasher.spec.ts`       | 5      | formato `scrypt$salt$key`, verificação correta/incorreta, rejeição de formato malformado, salts distintos, comparação em tempo constante                                                                                             |
+| `transaction.dto.spec.ts`              | 4      | `toTransactionUpdate` — o mapeamento de patch e a proteção contra `null` acidental (ver [7.4](#74-transactions--apitransactions))                                                                                                    |
+| `delete-transaction.use-case.spec.ts`  | 4      | escopo `one` vs `series`, transação sem grupo                                                                                                                                                                                        |
+| `list-monthly-report.use-case.spec.ts` | 3      | injeção de regras no resumo, `coveredByRule` (idempotência), filtros aplicados                                                                                                                                                       |
+
+Os specs usam mocks dos ports e as fixtures de `apps/api/src/test/`
+(`card.fixtures.ts`, `transaction.fixtures.ts`) — nenhum toca banco real.
+
+### 16.2 Domínio — Vitest, 1 arquivo / 18 testes
+
+`packages/shared/src/domain/rules.spec.ts`, em três blocos:
+
+- `validateTransactionInput` — 12 casos, um por regra de [6.3](#63-validação-de-transação),
+  verificando **o `DomainErrorCode` exato**, não só que lança;
+- `calculateSummary` — 1 caso com 5 transações fixando os seis totais e confirmando que
+  devedor não entra no saldo;
+- `validateCardPaymentConsistency` — 5 casos: métodos correspondentes, métodos cruzados,
+  bandeira `outros`, e as duas tolerâncias (sem método / sem cartão).
+
+O front não tem suíte de testes: `pnpm test` roda `tsc --noEmit` no pacote web, e a
+configuração do Jest existe mas não há arquivo `*.test.*`/`*.spec.*` no app.
+
+---
+
+## 17. Gaps conhecidos
+
+Registrados para não surprised quem for mexer no código:
+
+1. **Divergência de faixa de ano.** A regra pura aceita `1900–2200`; o Zod
+   (`yearSchema`) e os DTOs aceitam `2000–2200`. Um ano entre 1900 e 1999 passaria pelo
+   domínio e seria barrado na borda. Divergir em `rules.ts` e `schemas.ts` é a correção
+   natural.
+2. **`MONTH_YEAR_REQUIRED`, `INVALID_CREDENTIALS` e `EMAIL_ALREADY_IN_USE`** estão
+   declarados em `DomainErrorCode` mas **nunca lançados** — o fluxo real usa
+   `ConflictError`/`UnauthorizedError`. São dead code no union type.
+3. **Zod não cobre tudo.** `transactionInputSchema` não valida a coerência
+   `type × category` além do caso `devedor × receita`, nem `category: null` fora de
+   "despesa com cartão". A fonte da verdade é `validateTransactionInput` no servidor; o
+   Zod é a camada de feedback rápido, não a garantia.
+4. **`transactionInputSchema` permite `isPaid` default `false`**, e `recurrenceSchema`
+   limita a 240 parcelas, mas o front limita a 12 e a regra pura não impõe teto. Três
+   limites diferentes para a mesma coisa.
+5. **`isDefault` do cartão nunca é lido.** O checkbox em Configurações diz "selecionado
+   por padrão no form de transação", mas `TransactionForm` inicia com `cardId: ''` e
+   não consulta `card.isDefault`. Ou o form passa a respeitar a flag, ou o texto do
+   checkbox deve mudar.
+6. **`CategoryBreakdown` mistura receitas e despesas no mesmo total**, porque agrupa por
+   `t.category ?? t.cardId` sem filtrar por tipo. A barra "Por categoria" pode mostrar
+   uma categoria de despesa dominada por receitas. O filtro por tipo na barra resolveria.
+7. **Recorrência sem teto na regra pura.** `expandRecurrence` aceita
+   `installments = 10_000`; quem limita a 240 é o Zod e o DTO. Uma chamada interna sem
+   DTO geraria 10 mil transações.
+8. **Sem paginação.** O relatório devolve e a tabela renderiza o mês inteiro filtrado.
+   Suficiente para uso pessoal, não para dezenas de milhares de lançamentos.
+9. **Guard de auth só no client.** Sem `middleware.ts` e sem `GET /auth/me` no boot: a
+   segurança real é a API, mas há um flash de página vazia em `/` e em `/dashboard` sem
+   token. Uma checagem no servidor eliminaria o flash.
+10. **Token sem refresh.** JWT de 7 dias e, expirado, o usuário volta para o login sem
+    nenhuma renovação silenciosa.
+11. **`havan.png` é reserva morta.** O arquivo está versionado e é copiado no build,
+    mas `readBrandLogo` só resolve `nubank` e `itaucard` — `GET /cards/logos/havan`
+    responde 404. Ou o mapper passa a incluir `havan`, ou o arquivo sai do repositório.
+12. **Cache do `useMonthlyReport` com params embutido na key.** Combinações diferentes
+    de filtro viram entradas distintas do cache. Em uso normal (poucos filtros, sem
+    alternância rápida) é o comportamento desejado, mas alternar filtro/tipo/categoria
+    rapidamente acumula entradas até o `gcTime` padrão expirar.
+13. **Peer dependencies desatualizadas.** `pnpm install` reporta conflitos de peer entre
+    `eslint@10` e plugins do `eslint-config-next` (que esperam `^9`), e entre
+    `ts-jest@29` e `@babel/core@8`. São avisos, não erros — build, lint, typecheck e
+    test passam. Vale um upgrade coordenado de `eslint-config-next` / `ts-jest`.
+14. **Migrações pendentes localmente.** `prisma migrate status` acusa
+    `20200101000000_baseline` e `20260927000000_enable_rls` como não aplicadas no banco
+    de desenvolvimento. A `baseline` é um placeholder para bancos já existentes
+    (resolva com `prisma migrate resolve --applied 20200101000000_baseline`); a da RLS
+    pode ser aplicada com `pnpm db:migrate` quando você quiser habilitar a camada 2 de
+    isolamento.

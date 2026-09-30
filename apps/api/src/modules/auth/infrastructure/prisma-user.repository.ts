@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { NewUser, User } from '@valletcontrol/shared';
+import type { NewUser, User } from '@walletcontrol/shared';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import type { UserWithPasswordHash } from '../application/ports/user-repository.port';
 import { UserRepositoryPort } from '../application/ports/user-repository.port';

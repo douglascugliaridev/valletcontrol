@@ -18,14 +18,14 @@ import {
   ValidatorConstraint,
   ValidatorConstraintInterface,
 } from 'class-validator';
-import { CATEGORIES, PAYMENT_METHODS, TRANSACTION_TYPES } from '@valletcontrol/shared';
+import { CATEGORIES, PAYMENT_METHODS, TRANSACTION_TYPES } from '@walletcontrol/shared';
 import type {
   Category,
   Month,
   PaymentMethod,
   TransactionType,
   TransactionUpdate,
-} from '@valletcontrol/shared';
+} from '@walletcontrol/shared';
 
 const enumIsIn = (values: readonly string[]) =>
   IsIn(values, { message: `Valor inválido. Permitidos: ${values.join(', ')}.` });

@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { AuthResponse } from '@valletcontrol/shared';
+import type { AuthResponse } from '@walletcontrol/shared';
 import { UnauthorizedError } from '../../../../common/errors/app-errors';
 import { PasswordHasherPort } from '../ports/password-hasher.port';
 import { TokenServicePort } from '../ports/token-service.port';

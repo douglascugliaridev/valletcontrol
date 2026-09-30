@@ -1,4 +1,4 @@
-import { Category, PaymentMethod, TransactionType } from '@valletcontrol/shared';
+import { Category, PaymentMethod, TransactionType } from '@walletcontrol/shared';
 import { NotFoundError } from '../../../../common/errors/app-errors';
 import { makeTransaction, mockTransactionRepository } from '../../../../test/transaction.fixtures';
 import { UpdateTransactionUseCase } from './update-transaction.use-case';

@@ -1,7 +1,7 @@
 import { Transform, Type } from 'class-transformer';
 import { IsBoolean, IsIn, IsInt, IsOptional, IsString, Length, Max, Min } from 'class-validator';
-import { CATEGORIES, TRANSACTION_TYPES } from '@valletcontrol/shared';
-import type { Category, TransactionType } from '@valletcontrol/shared';
+import { CATEGORIES, TRANSACTION_TYPES } from '@walletcontrol/shared';
+import type { Category, TransactionType } from '@walletcontrol/shared';
 
 const enumIsIn = (values: readonly string[]) =>
   IsIn(values, { message: `Valor inválido. Permitidos: ${values.join(', ')}.` });

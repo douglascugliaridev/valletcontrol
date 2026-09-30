@@ -3,7 +3,7 @@ import {
   CATEGORY_TO_TYPE,
   type Category,
   type TransactionType,
-} from '@valletcontrol/shared';
+} from '@walletcontrol/shared';
 
 export const typeTone: Record<
   TransactionType,

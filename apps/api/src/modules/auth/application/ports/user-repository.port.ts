@@ -1,4 +1,4 @@
-import type { NewUser, User } from '@valletcontrol/shared';
+import type { NewUser, User } from '@walletcontrol/shared';
 
 /** Usuário com hash de senha — usado apenas internamente na autenticação. */
 export interface UserWithPasswordHash extends User {

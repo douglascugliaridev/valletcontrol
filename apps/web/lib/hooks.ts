@@ -14,7 +14,7 @@ import type {
   RecurringRuleUpdate,
   Transaction,
   TransactionUpdate,
-} from '@valletcontrol/shared';
+} from '@walletcontrol/shared';
 import { api } from './api';
 
 export const reportKey = (params: GetMonthlyReportParams) =>

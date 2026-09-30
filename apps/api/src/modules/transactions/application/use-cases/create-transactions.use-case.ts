@@ -5,13 +5,13 @@ import type {
   Transaction,
   TransactionCreatedResponse,
   TransactionInput,
-} from '@valletcontrol/shared';
+} from '@walletcontrol/shared';
 import {
   buildInstallmentDescription,
   expandRecurrence,
   validateCardPaymentConsistency,
   validateTransactionInput,
-} from '@valletcontrol/shared';
+} from '@walletcontrol/shared';
 import { NotFoundError } from '../../../../common/errors/app-errors';
 import { CardRepositoryPort } from '../../../cards/application/ports/card-repository.port';
 import { TransactionRepositoryPort } from '../ports/transaction-repository.port';

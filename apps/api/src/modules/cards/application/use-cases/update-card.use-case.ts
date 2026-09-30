@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import type { Card, CardUpdate } from '@valletcontrol/shared';
+import type { Card, CardUpdate } from '@walletcontrol/shared';
 import { CardRepositoryPort } from '../ports/card-repository.port';
 
 export interface UpdateCardInput {

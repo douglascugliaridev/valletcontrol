@@ -1,4 +1,4 @@
-import type { Card } from '@valletcontrol/shared';
+import type { Card } from '@walletcontrol/shared';
 import { CardRepositoryPort } from '../modules/cards/application/ports/card-repository.port';
 
 export function makeCard(overrides: Partial<Card> = {}): Card {
