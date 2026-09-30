@@ -12,8 +12,7 @@ coverage/
 *.tsbuildinfo
 
 # Environment / Secrets
-.env
-.env.*
+.env*
 !.env.example
 !.env.seed
 
@@ -39,9 +38,9 @@ apps/api/uploads/
 !.vscode/extensions.json
 *.swp
 
-# NestJS
-apps/api/prisma/migrations/dev.db# Local agent config
+# Local agent config
 .claude/
+
+# Vercel / local tooling
 .vercel
-.env*
 imports/
