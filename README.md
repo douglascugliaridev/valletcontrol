@@ -8,12 +8,11 @@ Projetado para uso pessoal em rede local (celular e desktop na mesma rede) e tam
 publicado na Vercel.
 
 > **Nota sobre o nome:** o projeto já foi chamado de `ValletControl`. O rename para
-> `WalletControl` foi aplicado em código, assets, repositório e nomes de projeto Vercel.
-> Restam duas ocorrências de `valletcontrol` que **não** são código e não dependem de
-> nós: a credencial do PostgreSQL (`DATABASE_URL` em `.env` / `.env.example` — ver
-> [13.2](#132-nota-sobre-database_url-e-o-rename)) e o **domínio público** dos dois
-> projetos Vercel, `valletcontrol-api.vercel.app` e `valletcontrol-frontend.vercel.app`
-> — ver [14.1](#141-deploy).
+> `WalletControl` foi aplicado em código, assets, repositório, role/banco do Postgres,
+> container Docker e nomes de projeto Vercel. Resta **uma** ocorrência de `valletcontrol`
+> que não é código e não depende de nós: o **domínio público** dos dois projetos Vercel,
+> `valletcontrol-api.vercel.app` e `valletcontrol-frontend.vercel.app` — ver
+> [14.1](#141-deploy).
 
 ---
 
@@ -257,7 +256,7 @@ Três decisões de modelagem merecem destaque:
    propagar um patch para ele são operações em massa (`updateMany`/`deleteMany` com
    `where: { installmentGroupId, ownerId }`). Um FK exigiria uma tabela `installment_group`.
 2. **`Transaction.category` é anulável, `RecurringRule.category` não.** A anulabilidade
-   é a expressão do _bucket_ de despesa (ver [6.2](#62-regra-do-bucket-categoria-ou-cartao)).
+   é a expressão do _bucket_ de despesa (ver [6.2](#62-regra-do-bucket-categoria-ou-cartão)).
    Uma regra recorrente nunca é "de cartão", então não precisa de nulabilidade.
 3. **`dueDate` é `@db.Date`**, não timestamp, e o repositório converte para
    `new Date(Date.UTC(y, m - 1, d))` ao gravar e para `yyyy-mm-dd` ao ler — evita
@@ -1131,10 +1130,17 @@ com hash scrypt gerado no mesmo formato da produção.
 | 10  | Venda Xbox       | 900,00   | devedor | `devedores`    | — (`paymentMethod: NUBANK`)   | 30    | sim  |
 
 > **Renomeação:** o e-mail do seed mudou de `demo@valletcontrol.app` para
-> `demo@walletcontrol.app`. Como o seed faz `upsert` **por e-mail**, o novo e-mail cria
-> um usuário **novo** e o antigo continua no banco. Se quiser limpar:
-> `DELETE FROM users WHERE email = 'demo@valletcontrol.app';` (as transações, cartões e
-> regras dele saem por `ON DELETE CASCADE`).
+> `demo@walletcontrol.app`. Como o seed faz `upsert` **por e-mail**, rodar o seed de novo
+> cria um usuário **novo** e deixa o antigo no banco — sem órfãos, já que as transações,
+> cartões e regras linked são removidas por `ON DELETE CASCADE`.
+>
+> Em vez de apagar e recriar (o que perderia as 40 transações do demo), renomeie o e-mail
+> no lugar, preservando tudo — as FKs apontam por `id`:
+>
+> ```sql
+> UPDATE users SET email = 'demo@walletcontrol.app', "updatedAt" = now()
+>  WHERE email = 'demo@valletcontrol.app';
+> ```
 
 ### 12.2 Importador de planilhas — `import:spreadsheet`
 
@@ -1211,39 +1217,63 @@ inteiro, em vez de silenciosamente usar `NaN`.
 `turbo.json` declara todas essas variáveis em `globalEnv`, para que mudar qualquer uma
 invalide o cache das tarefas.
 
-### 13.2 Nota sobre `DATABASE_URL` e o rename
+### 13.2 `DATABASE_URL` e o rename
 
-O `DATABASE_URL` continua referenciando o role e o banco **`valletcontrol`**:
+O role, o banco e o container Docker usam **`walletcontrol`**. O `DATABASE_URL` é:
 
 ```
-DATABASE_URL=postgresql://valletcontrol:valletcontrol@localhost:5433/valletcontrol?schema=public
+DATABASE_URL=postgresql://walletcontrol:walletcontrol@localhost:5433/walletcontrol?schema=public
 ```
 
-Isso foi **intencional**. O Postgres é externo (o `docker-compose` de apoio foi removido
-em `23c91a0`) e o mesmo nome está gravado como variável cifrada nos projetos Vercel.
-Renomear aqui exigiria renomear a role e o banco de verdade, e o resultado seria o mesmo
-com risco de quebrar o ambiente local e a produção. O nome é uma credencial de
-infraestrutura, não identidade de produto.
+O rename foi feito com `ALTER ... RENAME`, que move a entrada no catálogo e **preserva os
+dados** (não é drop/recreate). Duas peculiarities do Postgres nessa operação:
 
-Se um dia essa renomeação for desejada, o caminho é (executando com um role
-superusuário):
+- `ALTER DATABASE` exige estar conectado a **outra** base (não à que está renomeando).
+- `ALTER ROLE ... RENAME` falha com `session user cannot be renamed` se você estiver
+  autenticado como a própria role. Num banco sem superusuário `postgres`, a saída é criar
+  uma role temporária superusuária, renomear por ela e removê-la em seguida.
 
-```sql
-ALTER ROLE valletcontrol WITH LOGIN PASSWORD 'valletcontrol';
-ALTER DATABASE valletcontrol OWNER TO valletcontrol;
-ALTER DATABASE valletcontrol RENAME TO walletcontrol;
-ALTER ROLE valletcontrol RENAME TO walletcontrol;
-```
+O `pg_hba.conf` do container confia em `local` e em `127.0.0.1/32`, mas o acesso vindo do
+host cai na regra `host all all all scram-sha-256` — então a senha **é** validada de fora do
+container, mesmo que `docker exec psql` (socket) nunca a exercite. Para testar credencial de
+verdade, conecte a partir do host.
 
-e, em seguida, atualizar `DATABASE_URL` no `.env` **e** nos dois projetos Vercel.
-Sequência inversa (criar o novo, migrar, só então remover o antigo) é mais segura se
-houver dados que importem.
+> **A `DATABASE_URL` da Vercel é uma Secret cifrada** e este repositório não tem acesso ao
+> valor em claro. Se o banco de produção também se chamar `valletcontrol`, renomeá-lo exige
+> o valor atual dessa variável e acesso de superusuário ao servidor — ver
+> [13.4](#134-divergência-de-migrações-conhecida).
 
 ### 13.3 CORS
 
 `app.enableCors({ origin: config.get('cors.allowedOrigins'), credentials: true })`.
 Para acesso pela rede local, inclua o IP da máquina na lista
 (ex.: `http://192.168.1.18:3000`).
+
+### 13.4 Divergência de migrações conhecida
+
+`pnpm --filter @walletcontrol/api exec prisma migrate status` acusa duas migrações do
+repositório como **não aplicadas** no Postgres local:
+
+| Migração                    | Situação no banco local         |
+| --------------------------- | ------------------------------- |
+| `20200101000000_baseline`   | ausente em `_prisma_migrations` |
+| `20260927000000_enable_rls` | ausente em `_prisma_migrations` |
+
+As migrações que **de fato** criaram o schema (`20260919165908_init` em diante) estão
+registradas e finalizadas. As duas acima chegaram ao repositório depois, então o banco
+local nunca as rodou.
+
+Consequências práticas:
+
+- Como a role `walletcontrol` é **superusuário**, ela ignora RLS, e o app funciona local
+  mesmo com `20260927000000_enable_rls` pendente. Em um role comum a falta de RLS seria um
+  problema de isolamento, não de compatibilidade.
+- **Não rode `prisma migrate dev` para "limpar" isso**: ele tentará criar o schema da
+  `baseline` sobre tabelas que já existem. Resolver é decisão de dados, não de rename —
+  em geral com `prisma migrate resolve --applied` ou marcando as migrações à mão após
+  conferir o schema.
+
+Este estado é anterior ao rename e não tem relação com ele.
 
 ---
 
@@ -1342,12 +1372,12 @@ Todos da raiz, via Turborepo:
 
 Comandos só da API (`pnpm --filter @walletcontrol/api …`):
 
-| Script               | O que faz                                                        |
-| -------------------- | ---------------------------------------------------------------- |
-| `prisma:generate`    | gera o client em `src/generated/prisma`                          |
-| `prisma:deploy`      | `prisma migrate deploy` (produção)                               |
-| `test:cov`           | Jest com cobertura                                               |
-| `import:spreadsheet` | importador de `.xlsx` (ver [12.2](#122-importador-de-planilhas)) |
+| Script               | O que faz                                                                           |
+| -------------------- | ----------------------------------------------------------------------------------- |
+| `prisma:generate`    | gera o client em `src/generated/prisma`                                             |
+| `prisma:deploy`      | `prisma migrate deploy` (produção)                                                  |
+| `test:cov`           | Jest com cobertura                                                                  |
+| `import:spreadsheet` | importador de `.xlsx` (ver [12.2](#122-importador-de-planilhas--importspreadsheet)) |
 
 ### 15.1 Verificação completa
 
