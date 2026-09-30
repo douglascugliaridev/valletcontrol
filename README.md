@@ -8,9 +8,12 @@ Projetado para uso pessoal em rede local (celular e desktop na mesma rede) e tam
 publicado na Vercel.
 
 > **Nota sobre o nome:** o projeto já foi chamado de `ValletControl`. O rename para
-> `WalletControl` foi aplicado em código, assets, repositório e projetos Vercel.
-> A única ocorrência remanescente de `valletcontrol` está na credencial do PostgreSQL
-> (`DATABASE_URL` em `.env` / `.env.example`) — ver [Configuração](#configuração-e-ambiente).
+> `WalletControl` foi aplicado em código, assets, repositório e nomes de projeto Vercel.
+> Restam duas ocorrências de `valletcontrol` que **não** são código e não dependem de
+> nós: a credencial do PostgreSQL (`DATABASE_URL` em `.env` / `.env.example` — ver
+> [13.2](#132-nota-sobre-database_url-e-o-rename)) e o **domínio público** dos dois
+> projetos Vercel, `valletcontrol-api.vercel.app` e `valletcontrol-frontend.vercel.app`
+> — ver [14.1](#141-deploy).
 
 ---
 
@@ -1278,17 +1281,22 @@ erro do login sugere exatamente essa verificação.
 
 ### 14.1 Deploy
 
-| Projeto                  | Diretório  | Comandos                                                                                                                                                                                     |
-| ------------------------ | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `walletcontrol-api`      | `apps/api` | Vercel detecta NestJS; `apps/api/vercel.json` define `installCommand` e `buildCommand` (que também copia `prisma/logos/*.png` para `dist/prisma/logos/`, necessário para o endpoint de logo) |
-| `walletcontrol-frontend` | `apps/web` | Next.js com `output: 'standalone'` e `transpilePackages: ['@walletcontrol/shared']`                                                                                                          |
+| Projeto                  | Root Directory | Observações                                                                                                                                                                                                                      |
+| ------------------------ | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `walletcontrol-api`      | raiz do repo   | Vercel detecta NestJS. `installCommand`, `buildCommand` e `outputDirectory` são definidos **no painel da Vercel** — `apps/api/vercel.json` fica **inerte**, porque o `rootDirectory` é a raiz e não existe `vercel.json` na raiz |
+| `walletcontrol-frontend` | `apps/web`     | Next.js com `output: 'standalone'` e `transpilePackages: ['@walletcontrol/shared']`; sem override de `buildCommand`                                                                                                              |
 
-O `buildCommand` da API é:
+> **Renomear pacotes exige atualizar o painel da Vercel.** O `buildCommand` da API cita
+> `@walletcontrol/shared` e `@walletcontrol/api` explicitamente, e o painel tem precedência
+> sobre o `vercel.json`. Um rename de pacote sem essa atualização falha com
+> `No projects matched the filters` — foi o que quebrou o primeiro deploy pós-rename.
+
+O `buildCommand` da API (definido no painel) é:
 
 ```
 pnpm --filter @walletcontrol/shared build &&
 pnpm --filter @walletcontrol/api build &&
-mkdir -p dist/prisma/logos && cp prisma/logos/*.png dist/prisma/logos/
+mkdir -p apps/api/dist/prisma/logos && cp apps/api/prisma/logos/*.png apps/api/dist/prisma/logos/
 ```
 
 O último passo existe porque as logos são lidas do **bundle** em runtime (não há upload
@@ -1297,6 +1305,19 @@ em disco — ver `13a0ba3`), e o `dist` do Nest não inclui arquivos que não s�
 A env `NEXT_PUBLIC_API_URL` do frontend precisa apontar para a URL pública da API.
 Como é uma variável `NEXT_PUBLIC_*`, ela é **embutida no bundle no build** — trocar o
 valor exige um novo deploy, não basta reiniciar.
+
+> **Os domínios públicos continuam com o slug antigo.** Renomear um projeto na Vercel
+> **não** renomeia o domínio `*.vercel.app` já emitido, e o alias automático novo
+> (`<projeto>-panizza.vercel.app`) fica atrás de `ssoProtection`
+> (`all_except_custom_domains`). Estado atual, que funciona:
+>
+> | Serviço  | URL pública                                 | `NEXT_PUBLIC_API_URL`                      |
+> | -------- | ------------------------------------------- | ------------------------------------------ |
+> | Frontend | `https://valletcontrol-frontend.vercel.app` | —                                          |
+> | API      | `https://valletcontrol-api.vercel.app`      | `https://valletcontrol-api.vercel.app/api` |
+>
+> Sair do slug antigo exige **domínio próprio** (o único tipo liberado pela
+> `ssoProtection`), adicionado como custom domain no projeto.
 
 ---
 
