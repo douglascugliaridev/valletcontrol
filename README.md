@@ -9,10 +9,9 @@ publicado na Vercel.
 
 > **Nota sobre o nome:** o projeto já foi chamado de `ValletControl`. O rename para
 > `WalletControl` foi aplicado em código, assets, repositório, role/banco do Postgres,
-> container Docker e nomes de projeto Vercel. Resta **uma** ocorrência de `valletcontrol`
-> que não é código e não depende de nós: o **domínio público** dos dois projetos Vercel,
-> `valletcontrol-api.vercel.app` e `valletcontrol-frontend.vercel.app` — ver
-> [14.1](#141-deploy).
+> container Docker, dados de seed, nomes de projeto **e domínios** Vercel. O slug antigo
+> `valletcontrol-*.vercel.app` permanece apenas como alias de compatibilidade dos mesmos
+> deployments — ver [14.1](#141-deploy).
 
 ---
 
@@ -1336,18 +1335,36 @@ A env `NEXT_PUBLIC_API_URL` do frontend precisa apontar para a URL pública da A
 Como é uma variável `NEXT_PUBLIC_*`, ela é **embutida no bundle no build** — trocar o
 valor exige um novo deploy, não basta reiniciar.
 
-> **Os domínios públicos continuam com o slug antigo.** Renomear um projeto na Vercel
-> **não** renomeia o domínio `*.vercel.app` já emitido, e o alias automático novo
+> **Os domínios públicos agora são `walletcontrol-*`.** Renomear um projeto na Vercel não
+> renomeia o domínio `*.vercel.app` já emitido, e o alias automático novo
 > (`<projeto>-panizza.vercel.app`) fica atrás de `ssoProtection`
-> (`all_except_custom_domains`). Estado atual, que funciona:
+> (`all_except_custom_domains`). A saída foi **reivindicar o slug novo como domínio do
+> próprio projeto** (`POST /v10/projects/{id}/domains`), que a Vercel aceita e marca como
+> `verified` — sem precisar comprar domínio. Estado atual:
 >
-> | Serviço  | URL pública                                 | `NEXT_PUBLIC_API_URL`                      |
-> | -------- | ------------------------------------------- | ------------------------------------------ |
-> | Frontend | `https://valletcontrol-frontend.vercel.app` | —                                          |
-> | API      | `https://valletcontrol-api.vercel.app`      | `https://valletcontrol-api.vercel.app/api` |
+> | Serviço  | URL pública em uso                          | Legado (mesmo deploy)                       |
+> | -------- | ------------------------------------------- | ------------------------------------------- |
+> | Frontend | `https://walletcontrol-frontend.vercel.app` | `https://valletcontrol-frontend.vercel.app` |
+> | API      | `https://walletcontrol-api.vercel.app/api`  | `https://valletcontrol-api.vercel.app/api`  |
 >
-> Sair do slug antigo exige **domínio próprio** (o único tipo liberado pela
-> `ssoProtection`), adicionado como custom domain no projeto.
+> O slug antigo foi mantido como alias para não quebrar links salvos. A API da Vercel
+> recusou transformar o alias legado em redirect (`Invalid redirect property`), então ele
+> continua servindo o mesmo deployment em vez de redirigir.
+
+> **`ALLOWED_ORIGINS` da API precisa acompanhar o domínio do frontend.** Migrar o domínio
+> sem atualizar essa env produz um preflight `204` **sem** `access-control-allow-origin`: o
+> status é sucesso e a falha só aparece no navegador, como falha de CORS. Como a env é
+> cifrada, a forma de auditar sem lê-la é sondar a origem —
+>
+> ```bash
+> curl -si -X OPTIONS https://walletcontrol-api.vercel.app/api/auth/login \
+>   -H "Origin: https://walletcontrol-frontend.vercel.app" \
+>   -H "Access-Control-Request-Method: POST" -H "Access-Control-Request-Headers: content-type" \
+>   | grep -i access-control-allow-origin
+> ```
+>
+> Ausência do header = origem não liberada. Em produção a lista é só o domínio do
+> frontend; localmente, `.env` traz `localhost:3000`, `localhost:3002` e o IP da LAN.
 
 ---
 
