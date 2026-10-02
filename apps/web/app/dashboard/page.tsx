@@ -2,21 +2,19 @@
 
 import type {
   CreateTransactionPayload,
+  MaterializeRecurringRulePayload,
   Month,
   Transaction,
   TransactionUpdate,
 } from '@walletcontrol/shared';
+import { ApiError, authErrorMessage, clearSession, getStoredUser, getToken } from '@/lib/api';
 import {
-  ApiError,
-  authErrorMessage,
-  clearSession,
-  getStoredUser,
-  getToken,
-} from '@/lib/api';
-import {
+  useApplyRecurringBillScope,
   useCards,
   useCreateTransaction,
+  useDeleteRecurringBillScope,
   useDeleteTransaction,
+  useMaterializeRecurringBill,
   useMonthlyReport,
   useUpdateTransaction,
   toMonth,
@@ -28,6 +26,7 @@ import { CategoryBreakdown } from '@/components/category-breakdown';
 import { FiltersBar } from '@/components/filters-bar';
 import { EMPTY_FILTERS, type Filters } from '@/components/filters.types';
 import { Logo } from '@/components/logo';
+import { RecurringScopeDialog, type ScopeChoice } from '@/components/recurring-scope-dialog';
 import { MonthSelector } from '@/components/month-selector';
 import { SummaryCards } from '@/components/summary-cards';
 import { ThemeToggle } from '@/components/theme-toggle';
@@ -47,8 +46,15 @@ export default function DashboardPage() {
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [form, setForm] = useState<FormState>({ open: false });
   const [pendingDelete, setPendingDelete] = useState<Transaction | null>(null);
+  // Diálogo de escopo das contas fixas: qual linha e qual ação estão em jogo.
+  const [scope, setScope] = useState<{
+    action: 'editar' | 'excluir';
+    transaction: Transaction;
+    patch?: TransactionUpdate;
+  } | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [toggleError, setToggleError] = useState<string | null>(null);
+  const [scopeNotice, setScopeNotice] = useState<string | null>(null);
 
   useEffect(() => {
     if (!getToken()) {
@@ -65,6 +71,9 @@ export default function DashboardPage() {
   const createTx = useCreateTransaction();
   const updateTx = useUpdateTransaction();
   const deleteTx = useDeleteTransaction();
+  const createFixedBill = useMaterializeRecurringBill();
+  const applyBillScope = useApplyRecurringBillScope();
+  const deleteBillScope = useDeleteRecurringBillScope();
 
   const openCreate = () => {
     setFormError(null);
@@ -85,6 +94,17 @@ export default function DashboardPage() {
     }
   };
 
+  /** Cria a conta fixa: materializa N meses de uma vez. */
+  const handleCreateFixedBill = async (payload: MaterializeRecurringRulePayload) => {
+    setFormError(null);
+    try {
+      await createFixedBill.mutateAsync(payload);
+      setForm({ open: false });
+    } catch (err) {
+      setFormError(err instanceof ApiError ? err.message : 'Não foi possível salvar.');
+    }
+  };
+
   const handleEdit = async (patch: TransactionUpdate, applyToAll?: boolean) => {
     if (!form.open || !form.initial) return;
     setFormError(null);
@@ -93,6 +113,80 @@ export default function DashboardPage() {
       setForm({ open: false });
     } catch (err) {
       setFormError(err instanceof ApiError ? err.message : 'Não foi possível salvar.');
+    }
+  };
+
+  /**
+   * Editar/excluir uma linha de conta fixa passa pelo diálogo de escopo.
+   * Sem `recurringRuleId` é uma transação comum e segue o fluxo de sempre.
+   */
+  const requestScopedAction = (
+    action: 'editar' | 'excluir',
+    t: Transaction,
+    patch?: TransactionUpdate,
+  ) => {
+    if (!t.recurringRuleId) {
+      if (action === 'excluir') {
+        setPendingDelete(t);
+      } else if (patch) {
+        void handleEdit(patch, false);
+      }
+      return;
+    }
+    setScope({ action, transaction: t, ...(patch ? { patch } : {}) });
+  };
+
+  const handleScopeChoice = async (choice: ScopeChoice) => {
+    if (!scope) return;
+    const { action, transaction: t, patch } = scope;
+    const ruleId = t.recurringRuleId;
+    setScope(null);
+    if (!ruleId) return;
+    try {
+      setScopeNotice(null);
+      if (action === 'excluir') {
+        if (choice === 'month') {
+          await deleteTx.mutateAsync({ id: t.id });
+        } else {
+          const r = await deleteBillScope.mutateAsync({
+            ruleId,
+            fromMonth: t.month,
+            fromYear: t.year,
+          });
+          // Diz o que ficou. Sem isso, um mês pago que continua na tela parece defeito.
+          setScopeNotice(
+            r.keptPaid > 0
+              ? `${r.deleted} lançamento(s) pendentes removidos. ${r.keptPaid} pago(s) foram preservados e continuam no relatório.`
+              : `${r.deleted} lançamento(s) removidos.`,
+          );
+        }
+        return;
+      }
+      if (!patch) return;
+      if (choice === 'month') {
+        await updateTx.mutateAsync({ id: t.id, patch });
+      } else {
+        // o escopo à frente ignora month/year: são a âncora, não o patch
+        const { month: _m, year: _y, ...forward } = patch;
+        const r = await applyBillScope.mutateAsync({
+          ruleId,
+          fromMonth: t.month,
+          fromYear: t.year,
+          ...forward,
+        });
+        setScopeNotice(
+          r.keptPaid > 0
+            ? `${r.changed} lançamento(s) atualizados. ${r.keptPaid} pago(s) foram preservados — o valor de um pagamento não muda em bloco.`
+            : `${r.changed} lançamento(s) atualizados.`,
+        );
+      }
+      setForm({ open: false });
+    } catch (err) {
+      setToggleError(
+        err instanceof ApiError
+          ? err.message
+          : 'Não foi possível concluir a operação na conta fixa.',
+      );
     }
   };
 
@@ -174,9 +268,11 @@ export default function DashboardPage() {
 
       <SummaryCards report={report} />
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-2">
-          <div className="flex flex-col gap-4">
+      {/* `min-w-0` nos três níveis: sem isso, `min-width: auto` deixa a coluna
+          principal recusar encolher e o grid transborda a viewport no mobile. */}
+      <div className="grid min-w-0 gap-4 lg:grid-cols-3">
+        <div className="min-w-0 lg:col-span-2">
+          <div className="flex min-w-0 flex-col gap-4">
             <FiltersBar filters={filters} onChange={setFilters} />
             {toggleError && (
               <p
@@ -186,16 +282,32 @@ export default function DashboardPage() {
                 {toggleError}
               </p>
             )}
+            {scopeNotice && (
+              <p className="rounded-lg bg-primary/10 px-3 py-2 text-sm" role="status">
+                {scopeNotice}
+              </p>
+            )}
             <TransactionsTable
               transactions={report?.transactions}
               cards={cards}
               loading={isLoading}
               onTogglePaid={handleTogglePaid}
               onEdit={openEdit}
-              onDelete={setPendingDelete}
+              onDelete={(t) => requestScopedAction('excluir', t)}
             />
           </div>
         </div>
+        {scope && (
+          <RecurringScopeDialog
+            open
+            action={scope.action}
+            description={scope.transaction.description}
+            referenceMonth={scope.transaction.month}
+            referenceYear={scope.transaction.year}
+            onCancel={() => setScope(null)}
+            onChoose={(choice) => void handleScopeChoice(choice)}
+          />
+        )}
         <CategoryBreakdown report={report} cards={cards} />
       </div>
 
@@ -208,32 +320,46 @@ export default function DashboardPage() {
         saving={saving}
         errorMessage={saving ? null : formError}
         onCreate={handleCreate}
-        onEdit={handleEdit}
+        onCreateFixedBill={handleCreateFixedBill}
+        onEdit={(patch) => {
+          const target = form.open ? form.initial : null;
+          if (target?.recurringRuleId) {
+            requestScopedAction('editar', target, patch);
+          } else {
+            void handleEdit(patch);
+          }
+        }}
       />
 
       <Modal
         open={pendingDelete !== null}
         onClose={() => setPendingDelete(null)}
-        title={
-          pendingDelete?.installmentGroupId ? 'Excluir parcela' : 'Excluir transação'
-        }
+        title={pendingDelete?.installmentGroupId ? 'Excluir parcela' : 'Excluir transação'}
       >
         {pendingDelete?.installmentGroupId ? (
           <>
             <p className="text-sm text-muted-foreground">
-              <span className="font-medium text-foreground">{pendingDelete.description}</span>{' '}
-              (R$ {(pendingDelete.amountCents / 100).toFixed(2).replace('.', ',')}) faz parte de
-              um grupo de parcelas. O que deseja excluir?
+              <span className="font-medium text-foreground">{pendingDelete.description}</span> (R${' '}
+              {(pendingDelete.amountCents / 100).toFixed(2).replace('.', ',')}) faz parte de um
+              grupo de parcelas. O que deseja excluir?
             </p>
             <div className="mt-6 flex flex-col-reverse justify-end gap-2 sm:flex-row">
               <Button variant="ghost" onClick={() => setPendingDelete(null)}>
                 Cancelar
               </Button>
-              <Button variant="danger" onClick={() => handleDelete(false)} disabled={deleteTx.isPending}>
+              <Button
+                variant="danger"
+                onClick={() => handleDelete(false)}
+                disabled={deleteTx.isPending}
+              >
                 {deleteTx.isPending ? <Spinner className="size-4" /> : null}
                 Apenas esta parcela
               </Button>
-              <Button variant="danger" onClick={() => handleDelete(true)} disabled={deleteTx.isPending}>
+              <Button
+                variant="danger"
+                onClick={() => handleDelete(true)}
+                disabled={deleteTx.isPending}
+              >
                 {deleteTx.isPending ? <Spinner className="size-4" /> : null}
                 Todas as parcelas
               </Button>

@@ -10,11 +10,17 @@ import type {
 import {
   CARD_BRAND_LABELS,
   MAX_INSTALLMENTS,
+  MAX_MONTHS_AHEAD,
+  MONTH_NAMES_LONG,
   PAYMENT_METHODS,
   cardToPaymentMethod,
   formatCardLabel,
 } from '@walletcontrol/shared';
-import type { CreateTransactionPayload, TransactionUpdate } from '@walletcontrol/shared';
+import type {
+  CreateTransactionPayload,
+  MaterializeRecurringRulePayload,
+  TransactionUpdate,
+} from '@walletcontrol/shared';
 import { Button, Input, Label, Modal, Select, Spinner } from '@/components/ui';
 import { CardLogo } from '@/components/card-logo';
 import { categoriesForType } from '@/lib/display';
@@ -34,6 +40,8 @@ export interface TransactionFormProps {
   errorMessage?: string | null;
   onCreate: (payload: CreateTransactionPayload) => void;
   onEdit: (patch: TransactionUpdate, applyToAll?: boolean) => void;
+  /** Conta fixa materializada: total de meses, contando o mês de referência. */
+  onCreateFixedBill?: (payload: MaterializeRecurringRulePayload) => void;
 }
 
 const TYPE_LABEL = { receita: 'Receita', despesa: 'Despesa', devedor: 'Devedor(a)' } as const;
@@ -58,6 +66,8 @@ interface Draft {
   year: number;
   installments: string;
   startFrom: string;
+  /** Meses da conta fixa. Vazio = transação simples, sem recorrência. */
+  months: string;
 }
 
 function toDraft(initial: Transaction | null, defaultMonth: Month, defaultYear: number): Draft {
@@ -75,6 +85,7 @@ function toDraft(initial: Transaction | null, defaultMonth: Month, defaultYear: 
       year: initial.year,
       installments: '',
       startFrom: '',
+      months: '',
     };
   }
   return {
@@ -90,6 +101,7 @@ function toDraft(initial: Transaction | null, defaultMonth: Month, defaultYear: 
     year: defaultYear,
     installments: '',
     startFrom: '',
+    months: '',
   };
 }
 
@@ -103,6 +115,7 @@ export function TransactionForm({
   errorMessage,
   onCreate,
   onEdit,
+  onCreateFixedBill,
 }: TransactionFormProps) {
   const [draft, setDraft] = useState<Draft>(() => toDraft(initial, defaultMonth, defaultYear));
   const [applyToAll, setApplyToAll] = useState(false);
@@ -139,6 +152,19 @@ export function TransactionForm({
     }
   };
 
+  /**
+   * Contas fixas: só `despesa` com a categoria "Contas Fixas" e **sem** cartão.
+   * Com cartão o bucket é o próprio cartão (`category` vira null), então a pergunta
+   * de recorrência não aparece — ver a regra do bucket no formulário.
+   */
+  const fixedMonthsValue = draft.months.trim() ? Number(draft.months) : null;
+  const isFixedBill =
+    initial === null &&
+    draft.type === 'despesa' &&
+    draft.category === 'contas_fixas' &&
+    !draft.cardId;
+  const hasFixedMonths = isFixedBill && fixedMonthsValue !== null;
+
   const amountCents = parseReaisToCents(draft.amount);
   const needsMethod = draft.type === 'devedor';
   const totalInstallments = draft.installments.trim() ? Number(draft.installments) : 1;
@@ -152,6 +178,14 @@ export function TransactionForm({
   }
   if (initial === null && totalInstallments > MAX_INSTALLMENTS) {
     errors.push(`Máximo de ${MAX_INSTALLMENTS} parcelas.`);
+  }
+  if (hasFixedMonths) {
+    const n = fixedMonthsValue as number;
+    if (!Number.isInteger(n) || n < 1) {
+      errors.push('Quantidade de meses deve ser um número inteiro maior que zero.');
+    } else if (n > MAX_MONTHS_AHEAD) {
+      errors.push(`Máximo de ${MAX_MONTHS_AHEAD} meses.`);
+    }
   }
   if (initial === null && startingInstallment < 1) {
     errors.push('Parcela inicial mínima: 1.');
@@ -201,6 +235,20 @@ export function TransactionForm({
         isPaid,
       };
       onEdit(patch, applyToAll);
+    } else if (hasFixedMonths && onCreateFixedBill) {
+      // Conta fixa: o grupo materializa N meses (o de referência já entra neles).
+      onCreateFixedBill({
+        description: base.description,
+        amountCents: base.amountCents,
+        type: base.type,
+        category: base.category,
+        cardId: base.cardId,
+        dueDate: base.dueDate,
+        month: base.month,
+        year: base.year,
+        isPaid: base.isPaid,
+        months: fixedMonthsValue as number,
+      });
     } else {
       const installments = draft.installments.trim() ? Number(draft.installments) : undefined;
       const startingFrom =
@@ -405,7 +453,7 @@ export function TransactionForm({
               ))}
             </Select>
           </div>
-          {initial === null && (
+          {initial === null && !isFixedBill && (
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="installments">Parcelas</Label>
               <Input
@@ -419,7 +467,7 @@ export function TransactionForm({
               />
             </div>
           )}
-          {initial === null && totalInstallments > 1 && (
+          {initial === null && !isFixedBill && totalInstallments > 1 && (
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="startFrom">Iniciar na parcela</Label>
               <Input
@@ -443,6 +491,31 @@ export function TransactionForm({
             Pago(a)
           </label>
         </div>
+
+        {/* Contas fixas e parcelas são excludentes: parcelar não replica por mês.
+            Campo em linha própria — dentro do grid de 4 colunas ficava espremido. */}
+        {isFixedBill && (
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="fixed-months">Quantidade de meses</Label>
+            <div className="flex items-center gap-3">
+              <Input
+                id="fixed-months"
+                type="number"
+                min={1}
+                max={MAX_MONTHS_AHEAD}
+                placeholder="1"
+                className="w-40"
+                value={draft.months}
+                onChange={(e) => set({ months: e.target.value })}
+              />
+              <p className="text-xs text-muted-foreground">
+                {draft.months.trim() === ''
+                  ? 'Deixe em branco para lançar só neste mês. Preenchendo, repete a conta nos meses seguintes.'
+                  : `A conta será criada em ${draft.months.trim()} meses a partir de ${MONTH_NAMES_LONG[Number(draft.month) - 1] ?? ''}.`}
+              </p>
+            </div>
+          </div>
+        )}
 
         {errors.length > 0 && (
           <ul className="flex flex-col gap-1 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">

@@ -8,9 +8,14 @@ import type {
   CreateTransactionPayload,
   GetMonthlyReportParams,
   Month,
+  MaterializeRecurringRulePayload,
+  MaterializeRecurringRuleResponse,
   MonthlyReport,
   RecurringRule,
   RecurringRuleInput,
+  RecurringRuleScopeDeleteResponse,
+  RecurringRuleScopePayload,
+  RecurringRuleScopeResponse,
   RecurringRuleUpdate,
   Transaction,
   TransactionUpdate,
@@ -149,12 +154,99 @@ export function useUpdateRecurringRule() {
 export function useDeleteRecurringRule() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => api<void>(`/recurring-rules/${id}`, { method: 'DELETE' }),
+    mutationFn: (id: string) =>
+      api<DeleteRecurringRuleResponse>(`/recurring-rules/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
       client.invalidateQueries({ queryKey: recurringRulesKey });
       client.invalidateQueries({ queryKey: ['transactions'] });
     },
   });
+}
+
+/**
+ * Cria uma conta fixa materializando `months` meses a partir do mês de referência.
+ * A resposta traz a regra e as transações geradas.
+ */
+export function useMaterializeRecurringBill() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: MaterializeRecurringRulePayload) =>
+      api<MaterializeRecurringRuleResponse>('/recurring-rules/materialize', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: () => {
+      client.invalidateQueries({ queryKey: recurringRulesKey });
+      client.invalidateQueries({ queryKey: ['transactions'] });
+    },
+  });
+}
+
+/**
+ * Aplica um patch nas transações de um grupo de contas fixas a partir de um mês.
+ * Usado quando o usuário escolhe "também os meses à frente" na edição.
+ */
+export function useApplyRecurringBillScope() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ ruleId, ...payload }: RecurringRuleScopePayload & { ruleId: string }) =>
+      api<RecurringRuleScopeResponse>(`/recurring-rules/${ruleId}/transactions`, {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: () => {
+      client.invalidateQueries({ queryKey: recurringRulesKey });
+      client.invalidateQueries({ queryKey: ['transactions'] });
+    },
+  });
+}
+
+/** Exclui as transações do grupo a partir de um mês (escopo "à frente"). */
+export function useDeleteRecurringBillScope() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      ruleId,
+      fromMonth,
+      fromYear,
+    }: {
+      ruleId: string;
+      fromMonth: Month;
+      fromYear: number;
+    }) =>
+      api<RecurringRuleScopeDeleteResponse>(
+        `/recurring-rules/${ruleId}/transactions?fromMonth=${fromMonth}&fromYear=${fromYear}`,
+        { method: 'DELETE' },
+      ),
+    onSuccess: () => {
+      client.invalidateQueries({ queryKey: recurringRulesKey });
+      client.invalidateQueries({ queryKey: ['transactions'] });
+    },
+  });
+}
+
+/** Acrescenta meses ao fim de um grupo de contas fixas (usado em Configurações). */
+export function useExtendRecurringRule() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, months }: { id: string; months: number }) =>
+      api<{ rule: RecurringRule; added: number }>(`/recurring-rules/${id}/extend`, {
+        method: 'POST',
+        body: JSON.stringify({ months }),
+      }),
+    onSuccess: () => {
+      client.invalidateQueries({ queryKey: recurringRulesKey });
+      client.invalidateQueries({ queryKey: ['transactions'] });
+    },
+  });
+}
+
+/** Resposta do cancelamento de uma conta fixa (o front usa para informar o usuário). */
+export interface DeleteRecurringRuleResponse {
+  /** Lançamentos não pagos removidos — os meses que deixam de existir. */
+  deletedTransactions: number;
+  /** Lançamentos pagos preservados, que seguem no relatório como lançamentos comuns. */
+  keptPaidTransactions: number;
 }
 
 export function toMonth(value: number): Month {

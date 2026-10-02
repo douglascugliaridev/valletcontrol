@@ -69,7 +69,10 @@ export function Input({ className, ...props }: React.InputHTMLAttributes<HTMLInp
 
 export function Select({ className, ...props }: React.SelectHTMLAttributes<HTMLSelectElement>) {
   return (
-    <span className="relative block w-full">
+    // `min-w-0` no wrapper: como item de grid/flex o `min-width: auto` padrão
+    // deixaria o select esticar a coluna além da viewport. Vale para todo <Select>,
+    // não só para a barra de filtros.
+    <span className="relative block w-full min-w-0">
       <select className={cn(inputClasses, 'appearance-none pr-8', className)} {...props} />
       <ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
     </span>

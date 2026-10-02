@@ -1,5 +1,6 @@
-import type { Transaction, TransactionQuery } from '../domain/transaction';
+import type { Transaction, TransactionQuery, TransactionUpdate } from '../domain/transaction';
 import type { AuthResponse, User } from '../domain/user';
+import type { RecurringRule } from '../domain/recurring-rule';
 
 /**
  * Contrato de API compartilhado entre web/mobile e backend.
@@ -79,4 +80,44 @@ export interface CreateTransactionPayload {
   /** Recorrência opcional — expandida em N transações com prefixo "i/N". */
   recurrence?: { installments: number; startFrom?: number };
   isPaid?: boolean;
+}
+
+/** Semente de uma conta fixa: cria o grupo e materializa N meses. */
+export interface MaterializeRecurringRulePayload {
+  description: string;
+  amountCents: number;
+  type: Transaction['type'];
+  category: Transaction['category'];
+  cardId?: Transaction['cardId'];
+  dueDate: Transaction['dueDate'];
+  month: Transaction['month'];
+  year: number;
+  isPaid?: boolean;
+  /** Total de meses, contando o mês de referência. Ausente = 1 (só este mês). */
+  months?: number;
+}
+
+/** Patch aplicado a um grupo de contas fixas a partir de um mês de referência. */
+export interface RecurringRuleScopePayload extends TransactionUpdate {
+  fromMonth: Transaction['month'];
+  fromYear: number;
+}
+
+export interface MaterializeRecurringRuleResponse {
+  rule: RecurringRule;
+  transactions: Transaction[];
+}
+
+export interface RecurringRuleScopeResponse {
+  rule: RecurringRule;
+  changed: number;
+  /** Lançamentos já pagos no escopo, preservados porque pagamento não se reescreve em bloco. */
+  keptPaid: number;
+}
+
+export interface RecurringRuleScopeDeleteResponse {
+  deleted: number;
+  /** Lançamentos já pagos no escopo, preservados: apagar conta nunca destrói pagamento. */
+  keptPaid: number;
+  ruleRemoved: boolean;
 }

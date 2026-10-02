@@ -36,9 +36,11 @@ export function FiltersBar({
     ? CATEGORIES.filter((c) => CATEGORY_TO_TYPE[c] === filters.type)
     : CATEGORIES;
 
+  // `min-w-0` no container e nos filhos: como item de grid/flex, `min-width: auto`
+  // faz eles recusarem encolher e transbordarem a viewport no mobile.
   return (
-    <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-      <div className="relative flex-1">
+    <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center">
+      <div className="relative min-w-0 flex-1">
         <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           className="pl-9"
@@ -47,7 +49,11 @@ export function FiltersBar({
           onChange={(e) => onSearch(e.target.value)}
         />
       </div>
-      <div className="grid grid-cols-2 gap-3 sm:flex">
+      {/* `min-w-0` é obrigatório: os <select> têm largura intrínseca maior que a
+          coluna em telas estreitas, e sem isso o grid transborda a viewport
+          (scroll horizontal no mobile). `sm:flex` acima de `sm` vira flex-row,
+          onde os itens encolhem de novo. */}
+      <div className="grid min-w-0 grid-cols-2 gap-3 sm:flex">
         <Select
           aria-label="Tipo"
           value={filters.type ?? ''}

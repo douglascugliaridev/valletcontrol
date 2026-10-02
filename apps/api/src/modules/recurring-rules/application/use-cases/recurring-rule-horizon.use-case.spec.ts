@@ -5,7 +5,7 @@ import type {
   RecurringRuleInput,
   RecurringRuleUpdate,
 } from '@walletcontrol/shared';
-import { RecurringRuleRepositoryPort } from '../ports/recurring-rule-repository.port';
+import type { RecurringRuleRepositoryPort } from '../ports/recurring-rule-repository.port';
 import {
   CreateRecurringRuleUseCase,
   type CreateRecurringRuleInput,

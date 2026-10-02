@@ -34,6 +34,12 @@ export interface Transaction {
    * "editar/excluir todas as parcelas".
    */
   installmentGroupId?: string | null;
+  /**
+   * Regra de conta fixa que originou esta transação. Presente nas transações
+   * materializadas de um grupo — é o que permite aplicar uma alteração só neste
+   * mês ou a partir daqui para frente.
+   */
+  recurringRuleId?: string | null;
 }
 
 /** Entrada para criação de transação (sem campos gerenciados pelo sistema). */
@@ -49,6 +55,7 @@ export interface TransactionInput {
   year: number;
   isPaid?: boolean;
   installmentGroupId?: string | null;
+  recurringRuleId?: string | null;
 }
 
 /** Campos atualizáveis de uma transação (todos opcionais). */

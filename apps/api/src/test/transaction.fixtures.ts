@@ -55,6 +55,12 @@ class MockTransactionRepository extends TransactionRepositoryPort {
   deleteByIdAndOwner = jest.fn();
   updateManyByInstallmentGroupAndOwner = jest.fn();
   deleteManyByInstallmentGroupAndOwner = jest.fn();
+  findManyByRecurringRuleFrom = jest.fn();
+  updateManyByRecurringRuleFrom = jest.fn();
+  deleteManyUnpaidByRecurringRuleFrom = jest.fn();
+  countPaidByRecurringRuleFrom = jest.fn();
+  countTransactionsOfRule = jest.fn();
+  findFirstUnpaidByRecurringRule = jest.fn();
 }
 
 export function mockTransactionRepository(): MockTransactionRepository {

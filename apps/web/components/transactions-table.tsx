@@ -93,6 +93,11 @@ export function TransactionsTable({
                     </Badge>
                     {t.dueDate && <span>venc. {formatISODate(t.dueDate)}</span>}
                     {t.paymentMethod && <span>{t.paymentMethod}</span>}
+                    {t.recurringRuleId && (
+                      <span title="Esta linha faz parte de uma conta fixa que se repete.">
+                        conta fixa
+                      </span>
+                    )}
                   </span>
                 </div>
 

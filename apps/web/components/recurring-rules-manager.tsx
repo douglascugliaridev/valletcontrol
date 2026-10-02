@@ -1,19 +1,15 @@
 'use client';
 
-import type { Category, Month, RecurringRule, TransactionType } from '@walletcontrol/shared';
+import type { Month, MonthlyReport, RecurringRule, Transaction } from '@walletcontrol/shared';
 import {
+  addMonths,
   CATEGORY_LABELS,
   MAX_MONTHS_AHEAD,
   MONTH_NAMES_LONG,
   TRANSACTION_TYPE_LABELS,
 } from '@walletcontrol/shared';
-import {
-  useCreateRecurringRule,
-  useDeleteRecurringRule,
-  useRecurringRules,
-  useUpdateRecurringRule,
-} from '@/lib/hooks';
-import { ApiError } from '@/lib/api';
+import { useDeleteRecurringRule, useExtendRecurringRule, useRecurringRules } from '@/lib/hooks';
+import { ApiError, api } from '@/lib/api';
 import {
   Badge,
   Button,
@@ -23,158 +19,142 @@ import {
   Input,
   Label,
   Modal,
-  Select,
   Spinner,
 } from '@/components/ui';
-import { Pencil, Plus, Repeat, Trash2 } from 'lucide-react';
-import { useState } from 'react';
-import { categoriesForType } from '@/lib/display';
-import { centsToInput, formatCents, parseReaisToCents } from '@/lib/format';
-import { cn } from '@/lib/cn';
+import { Plus, Repeat, Trash2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { formatCents } from '@/lib/format';
 
-const NEW_RULE = (now: Date): RuleDraft => ({
-  description: '',
-  amount: '',
-  type: 'receita',
-  category: 'receita',
-  startMonth: (now.getMonth() + 1) as Month,
-  startYear: now.getFullYear(),
-  monthsAhead: '' as string,
-  isActive: true,
-});
-
-interface RuleDraft {
-  description: string;
-  amount: string;
-  type: TransactionType;
-  category: Category;
-  startMonth: number;
-  startYear: number;
-  /** Texto cru do input; vazio = sem prazo. */
-  monthsAhead: string;
-  isActive: boolean;
+interface MonthRef {
+  month: Month;
+  year: number;
 }
 
-function toDraft(rule: RecurringRule): RuleDraft {
-  return {
-    description: rule.description,
-    amount: centsToInput(rule.amountCents),
-    type: rule.type,
-    category: rule.category,
-    startMonth: rule.startMonth,
-    startYear: rule.startYear,
-    monthsAhead:
-      rule.monthsAhead === null || rule.monthsAhead === undefined ? '' : String(rule.monthsAhead),
-    isActive: rule.isActive,
-  };
+interface GroupCount {
+  total: number;
+  first?: MonthRef;
+  last?: MonthRef;
 }
 
-/** Ano base para o seletor de início da regra. */
-function startYearOptions(defaultYear: number): number[] {
-  return [defaultYear - 1, defaultYear, defaultYear + 1];
+/** Um mês do relatório já filtrado pelas transações do grupo. */
+async function fetchMonth(client: typeof api, ref: MonthRef) {
+  try {
+    const report = await client<MonthlyReport>(
+      `/transactions/monthly?year=${ref.year}&month=${ref.month}`,
+    );
+    return report.transactions;
+  } catch {
+    return [] as Transaction[];
+  }
+}
+
+/** "nov/2026 → out/2027" para a linha de gestão do grupo. */
+function rangeLabel(first: { month: Month; year: number }, last: { month: Month; year: number }) {
+  const one = (m: { month: Month; year: number }) =>
+    `${MONTH_NAMES_LONG[m.month - 1]?.slice(0, 3) ?? '?'}/${m.year}`;
+  return `${one(first)} → ${one(last)}`;
 }
 
 export function RecurringRulesManager() {
   const { data: rules, isLoading } = useRecurringRules();
-  const createRule = useCreateRecurringRule();
-  const updateRule = useUpdateRecurringRule();
   const deleteRule = useDeleteRecurringRule();
+  const extendRule = useExtendRecurringRule();
 
-  const [formOpen, setFormOpen] = useState(false);
-  const [editing, setEditing] = useState<RecurringRule | null>(null);
-  const [draft, setDraft] = useState<RuleDraft>(() => NEW_RULE(new Date()));
   const [formError, setFormError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<RecurringRule | null>(null);
+  const [extending, setExtending] = useState<RecurringRule | null>(null);
+  const [extendMonths, setExtendMonths] = useState('12');
 
-  const openCreate = () => {
-    setFormError(null);
-    setEditing(null);
-    setDraft(NEW_RULE(new Date()));
-    setFormOpen(true);
-  };
+  /**
+   * Quantas transações cada grupo tem, e o primeiro/último mês.
+   *
+   * O backend não expõe isso junto da regra, então derivamos do relatório: um
+   * `GET /transactions/monthly` por mês do grupo. São poucas requisições (o grupo
+   * tem `monthsAhead` meses) e evita um endpoint só para contagem.
+   */
+  const [counts, setCounts] = useState<Map<string, GroupCount>>(new Map());
 
-  const openEdit = (rule: RecurringRule) => {
-    setFormError(null);
-    setEditing(rule);
-    setDraft(toDraft(rule));
-    setFormOpen(true);
-  };
-
-  const set = (patch: Partial<RuleDraft>) => setDraft((d) => ({ ...d, ...patch }));
-
-  const onTypeChange = (type: TransactionType) => {
-    const categories = categoriesForType(type);
-    set({ type, category: categories[0] ?? 'outros' });
-  };
-
-  const submit = async () => {
-    setFormError(null);
-    const amountCents = parseReaisToCents(draft.amount);
-    if (!draft.description.trim()) {
-      setFormError('Informe a descrição da regra.');
-      return;
-    }
-    if (amountCents === null) {
-      setFormError('Informe um valor válido.');
-      return;
-    }
-    // Vazio = sem prazo (contas fixas não têm término). Preenchido, vira o horizonte.
-    let monthsAhead: number | null = null;
-    if (draft.monthsAhead.trim() !== '') {
-      const parsed = Number(draft.monthsAhead);
-      if (!Number.isInteger(parsed) || parsed < 1) {
-        setFormError('Meses à frente deve ser um número inteiro maior que zero.');
-        return;
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      const next = new Map<string, GroupCount>();
+      for (const rule of rules ?? []) {
+        if (!rule.monthsAhead) continue;
+        let total = 0;
+        let first: MonthRef | undefined;
+        let last: MonthRef | undefined;
+        for (let offset = 0; offset < rule.monthsAhead; offset += 1) {
+          const ref = addMonths(rule.startMonth, rule.startYear, offset);
+          const rows = await fetchMonth(api, ref);
+          const mine = rows.filter((t) => t.recurringRuleId === rule.id);
+          if (mine.length === 0) continue;
+          total += mine.length;
+          first ??= ref;
+          last = ref;
+        }
+        next.set(rule.id, { total, ...(first ? { first } : {}), ...(last ? { last } : {}) });
       }
-      if (parsed > MAX_MONTHS_AHEAD) {
-        setFormError(`Meses à frente máxima: ${MAX_MONTHS_AHEAD}.`);
-        return;
-      }
-      monthsAhead = parsed;
+      if (!cancelled) setCounts(next);
     }
-    const input = {
-      description: draft.description.trim(),
-      amountCents,
-      type: draft.type,
-      category: draft.category,
-      startMonth: draft.startMonth as Month,
-      startYear: draft.startYear,
-      monthsAhead,
-      isActive: draft.isActive,
+    void load();
+    return () => {
+      cancelled = true;
     };
+  }, [rules]);
+
+  const saving = extendRule.isPending;
+
+  const openExtend = (rule: RecurringRule) => {
+    setFormError(null);
+    setExtending(rule);
+    setExtendMonths('12');
+  };
+
+  const submitExtend = async () => {
+    if (!extending) return;
+    setFormError(null);
+    const months = Number(extendMonths);
+    if (!Number.isInteger(months) || months < 1) {
+      setFormError('Informe quantos meses acrescentar.');
+      return;
+    }
+    if (months > MAX_MONTHS_AHEAD) {
+      setFormError(`Máximo de ${MAX_MONTHS_AHEAD} meses por vez.`);
+      return;
+    }
     try {
-      if (editing) {
-        await updateRule.mutateAsync({
-          id: editing.id,
-          patch: {
-            description: input.description,
-            amountCents: input.amountCents,
-            type: input.type,
-            category: input.category,
-            monthsAhead: input.monthsAhead,
-            isActive: input.isActive,
-          },
-        });
-      } else {
-        await createRule.mutateAsync(input);
-      }
-      setFormOpen(false);
+      await extendRule.mutateAsync({ id: extending.id, months });
+      setExtending(null);
     } catch (err) {
-      setFormError(err instanceof ApiError ? err.message : 'Não foi possível salvar a regra.');
+      setFormError(err instanceof ApiError ? err.message : 'Não foi possível estender.');
     }
   };
 
   const confirmDelete = async () => {
     if (!pendingDelete) return;
+    setFormError(null);
     try {
-      await deleteRule.mutateAsync(pendingDelete.id);
+      const r = await deleteRule.mutateAsync(pendingDelete.id);
+      // Informa o que saiu e o que ficou: os pagos continuam no relatório como
+      // lançamentos comuns, então "excluir" não remove tudo da tela.
+      setNotice(
+        r.deletedTransactions > 0
+          ? `Conta fixa cancelada: ${r.deletedTransactions} lançamento(s) não pagos foram removidos${
+              r.keptPaidTransactions > 0
+                ? `, e ${r.keptPaidTransactions} pago(s) continuam no relatório.`
+                : '.'
+            }`
+          : 'Conta fixa cancelada. Não havia lançamentos não previstos.',
+      );
+    } catch (err) {
+      setFormError(
+        err instanceof ApiError ? err.message : 'Não foi possível cancelar a conta fixa.',
+      );
     } finally {
       setPendingDelete(null);
     }
   };
-
-  const saving = createRule.isPending || updateRule.isPending;
-  const categories = categoriesForType(draft.type);
 
   return (
     <Card>
@@ -183,10 +163,9 @@ export function RecurringRulesManager() {
           <Repeat className="size-4 text-muted-foreground" />
           <CardTitle>Regras recorrentes</CardTitle>
         </div>
-        <Button size="sm" onClick={openCreate}>
-          <Plus className="size-4" />
-          Nova regra
-        </Button>
+        <p className="text-xs text-muted-foreground">
+          As contas fixas nascem em “Nova transação”, na categoria “Contas Fixas”.
+        </p>
       </CardHeader>
 
       <div className="divide-y divide-border border-t border-border">
@@ -195,183 +174,101 @@ export function RecurringRulesManager() {
             <Spinner className="mx-auto size-5" />
           </div>
         ) : (rules ?? []).length === 0 ? (
-          <p className="p-6 text-center text-sm text-muted-foreground">
-            Nenhuma regra recorrente. Ex.: cadastre o “Salário” uma única vez e ele entra todo mês
-            no relatório.
-          </p>
+          <div className="flex flex-col gap-3">
+            {notice && (
+              <p
+                className="rounded-lg bg-primary/10 px-3 py-2 text-sm text-foreground"
+                role="status"
+              >
+                {notice}
+              </p>
+            )}
+            <p className="p-6 text-center text-sm text-muted-foreground">
+              Nenhuma conta fixa. Crie uma pelo botão “Nova transação”, escolhendo a categoria
+              “Contas Fixas” e preenchendo “Quantidade de meses”.
+            </p>
+          </div>
         ) : (
-          (rules ?? []).map((rule) => (
-            <div key={rule.id} className="flex items-center gap-3 px-5 py-3">
-              <div className="flex min-w-0 flex-1 flex-col">
-                <span className="truncate text-sm font-medium">{rule.description}</span>
-                <span className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-                  <Badge tone={rule.type === 'receita' ? 'success' : 'danger'}>
-                    {TRANSACTION_TYPE_LABELS[rule.type]}
-                  </Badge>
-                  <Badge tone="neutral">{CATEGORY_LABELS[rule.category]}</Badge>
-                  <span>
-                    desde {MONTH_NAMES_LONG[rule.startMonth - 1]} {rule.startYear}
+          <div className="flex flex-col">
+            {notice && (
+              <p
+                className="mx-5 mb-3 rounded-lg bg-primary/10 px-3 py-2 text-sm text-foreground"
+                role="status"
+              >
+                {notice}
+              </p>
+            )}
+            {(rules ?? []).map((rule) => (
+              <div key={rule.id} className="flex items-center gap-3 px-5 py-3">
+                <div className="flex min-w-0 flex-1 flex-col">
+                  <span className="truncate text-sm font-medium">{rule.description}</span>
+                  <span className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                    <Badge tone={rule.type === 'receita' ? 'success' : 'danger'}>
+                      {TRANSACTION_TYPE_LABELS[rule.type]}
+                    </Badge>
+                    <Badge tone="neutral">{CATEGORY_LABELS[rule.category]}</Badge>
+                    <span>
+                      desde {MONTH_NAMES_LONG[rule.startMonth - 1]} {rule.startYear}
+                    </span>
+                    <Badge tone="neutral">{counts.get(rule.id)?.total ?? 0} lançamentos</Badge>
+                    {(() => {
+                      const c = counts.get(rule.id);
+                      if (c?.first && c.last) {
+                        return <span>{rangeLabel(c.first, c.last)}</span>;
+                      }
+                      return <span>{rule.monthsAhead ?? 0}m configurados</span>;
+                    })()}
                   </span>
-                  {rule.monthsAhead === null || rule.monthsAhead === undefined ? (
-                    <Badge tone="neutral">sem prazo</Badge>
-                  ) : (
-                    <Badge tone="neutral">{rule.monthsAhead}m</Badge>
-                  )}
-                  {rule.isActive ? (
-                    <Badge tone="success">Ativa</Badge>
-                  ) : (
-                    <Badge tone="neutral">Inativa</Badge>
-                  )}
-                </span>
+                </div>
+                <div className="min-w-0 shrink text-sm font-semibold tabular-nums text-foreground sm:shrink-0">
+                  {formatCents(rule.amountCents)}
+                </div>
+                <div className="flex shrink-0 gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => openExtend(rule)}
+                    aria-label="Estender conta fixa"
+                  >
+                    <Plus className="size-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="text-destructive"
+                    onClick={() => setPendingDelete(rule)}
+                    aria-label="Excluir conta fixa"
+                  >
+                    <Trash2 className="size-4" />
+                  </Button>
+                </div>
               </div>
-              <div className="min-w-0 shrink text-sm font-semibold tabular-nums text-foreground sm:shrink-0">
-                {formatCents(rule.amountCents)}
-              </div>
-              <div className="flex shrink-0 gap-1">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => openEdit(rule)}
-                  aria-label="Editar regra"
-                >
-                  <Pencil className="size-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="text-destructive"
-                  onClick={() => setPendingDelete(rule)}
-                  aria-label="Excluir regra"
-                >
-                  <Trash2 className="size-4" />
-                </Button>
-              </div>
-            </div>
-          ))
+            ))}
+          </div>
         )}
       </div>
 
       <Modal
-        open={formOpen}
-        onClose={() => setFormOpen(false)}
-        title={editing ? 'Editar regra recorrente' : 'Nova regra recorrente'}
+        open={extending !== null}
+        onClose={() => setExtending(null)}
+        title="Estender conta fixa"
       >
-        <form
-          className="flex flex-col gap-4"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void submit();
-          }}
-        >
+        <div className="flex flex-col gap-4">
+          <p className="text-sm text-muted-foreground">
+            Acrescenta meses ao fim de “{extending?.description}”. Os lançamentos já existentes —
+            inclusive os pagos — não mudam.
+          </p>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="rule-description">Descrição</Label>
+            <Label htmlFor="extend-months">Quantos meses acrescentar</Label>
             <Input
-              id="rule-description"
-              placeholder="Ex.: Salário"
-              value={draft.description}
-              onChange={(e) => set({ description: e.target.value })}
-              autoFocus
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="rule-amount">Valor (R$)</Label>
-              <Input
-                id="rule-amount"
-                inputMode="decimal"
-                placeholder="0,00"
-                value={draft.amount}
-                onChange={(e) => set({ amount: e.target.value })}
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="rule-type">Tipo</Label>
-              <Select
-                id="rule-type"
-                value={draft.type}
-                onChange={(e) => onTypeChange(e.target.value as TransactionType)}
-              >
-                <option value="receita">Receita</option>
-                <option value="despesa">Despesa</option>
-              </Select>
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="rule-category">Categoria</Label>
-            <Select
-              id="rule-category"
-              value={draft.category}
-              onChange={(e) => set({ category: e.target.value as Category })}
-            >
-              {categories.map((c) => (
-                <option key={c} value={c}>
-                  {CATEGORY_LABELS[c]}
-                </option>
-              ))}
-            </Select>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="rule-start-month">Mês inicial</Label>
-              <Select
-                id="rule-start-month"
-                value={draft.startMonth}
-                onChange={(e) => set({ startMonth: Number(e.target.value) })}
-              >
-                {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
-                  <option key={m} value={m}>
-                    {MONTH_NAMES_LONG[m - 1]}
-                  </option>
-                ))}
-              </Select>
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="rule-start-year">Ano inicial</Label>
-              <Select
-                id="rule-start-year"
-                value={draft.startYear}
-                onChange={(e) => set({ startYear: Number(e.target.value) })}
-              >
-                {startYearOptions(new Date().getFullYear()).map((y) => (
-                  <option key={y} value={y}>
-                    {y}
-                  </option>
-                ))}
-              </Select>
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="rule-months-ahead">Meses à frente</Label>
-            <Input
-              id="rule-months-ahead"
+              id="extend-months"
               type="number"
               min={1}
               max={MAX_MONTHS_AHEAD}
-              placeholder="Sem prazo"
-              value={draft.monthsAhead}
-              onChange={(e) => set({ monthsAhead: e.target.value })}
+              value={extendMonths}
+              onChange={(e) => setExtendMonths(e.target.value)}
             />
-            <p className="text-xs text-muted-foreground">
-              {draft.monthsAhead.trim() === ''
-                ? 'Sem prazo: a conta fixa aparece todo mês, indefinidamente.'
-                : `Aparece por ${draft.monthsAhead.trim()} meses a partir do mês inicial.`}
-            </p>
           </div>
-
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={draft.isActive}
-              onChange={(e) => set({ isActive: e.target.checked })}
-              className={cn('size-4 accent-[var(--color-primary)]')}
-            />
-            Regra ativa (entra no relatório todo mês a partir do mês inicial)
-          </label>
-
           {formError && (
             <p
               className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive"
@@ -380,36 +277,55 @@ export function RecurringRulesManager() {
               {formError}
             </p>
           )}
-
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="ghost" onClick={() => setFormOpen(false)}>
+            <Button variant="ghost" onClick={() => setExtending(null)}>
               Cancelar
             </Button>
-            <Button type="submit" disabled={saving || !draft.description.trim()}>
+            <Button disabled={saving} onClick={() => void submitExtend()}>
               {saving ? <Spinner className="size-4" /> : null}
-              {editing ? 'Salvar alterações' : 'Criar regra'}
+              Estender
             </Button>
           </div>
-        </form>
+        </div>
       </Modal>
 
       <Modal
         open={pendingDelete !== null}
         onClose={() => setPendingDelete(null)}
-        title="Excluir regra recorrente"
+        title="Cancelar conta fixa"
       >
-        <p className="text-sm text-muted-foreground">
-          Deseja excluir a regra “{pendingDelete?.description}” (
-          {pendingDelete ? formatCents(pendingDelete.amountCents) : ''})? Ela deixará de entrar no
-          relatório mensal.
-        </p>
-        <div className="mt-6 flex justify-end gap-2">
-          <Button variant="ghost" onClick={() => setPendingDelete(null)}>
-            Cancelar
-          </Button>
-          <Button variant="danger" onClick={confirmDelete}>
-            {deleteRule.isPending ? <Spinner className="size-4" /> : 'Excluir'}
-          </Button>
+        <div className="flex flex-col gap-3">
+          <p className="text-sm">
+            Cancelar “{pendingDelete?.description}”
+            {pendingDelete ? ` (${formatCents(pendingDelete.amountCents)})` : ''}?
+          </p>
+          <ul className="flex list-disc flex-col gap-1 pl-5 text-sm text-muted-foreground">
+            <li>
+              Os lançamentos <strong className="text-foreground">não pagos</strong> a partir do
+              primeiro não pago serão removidos.
+            </li>
+            <li>
+              Os lançamentos <strong className="text-foreground">já pagos</strong> permanecem no
+              relatório como lançamentos comuns — apagar um pagamento é outra operação.
+            </li>
+            <li>A conta deixa de se repetir nos meses seguintes.</li>
+          </ul>
+          {formError && (
+            <p
+              className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive"
+              role="alert"
+            >
+              {formError}
+            </p>
+          )}
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setPendingDelete(null)}>
+              Cancelar
+            </Button>
+            <Button variant="danger" onClick={confirmDelete}>
+              {deleteRule.isPending ? <Spinner className="size-4" /> : 'Cancelar conta fixa'}
+            </Button>
+          </div>
         </div>
       </Modal>
     </Card>

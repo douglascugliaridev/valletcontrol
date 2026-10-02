@@ -7,10 +7,9 @@ import { PrismaTransactionRepository } from './infrastructure/prisma-transaction
 import { TransactionsController } from './ui/transactions.controller';
 import { TransactionRepositoryPort } from './application/ports/transaction-repository.port';
 import { CardsModule } from '../cards/cards.module';
-import { RecurringRulesModule } from '../recurring-rules/recurring-rules.module';
 
 @Module({
-  imports: [RecurringRulesModule, CardsModule],
+  imports: [CardsModule],
   controllers: [TransactionsController],
   providers: [
     ListMonthlyReportUseCase,
@@ -19,5 +18,6 @@ import { RecurringRulesModule } from '../recurring-rules/recurring-rules.module'
     DeleteTransactionUseCase,
     { provide: TransactionRepositoryPort, useClass: PrismaTransactionRepository },
   ],
+  exports: [TransactionRepositoryPort],
 })
 export class TransactionsModule {}

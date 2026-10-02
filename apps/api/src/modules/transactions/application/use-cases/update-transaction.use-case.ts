@@ -58,9 +58,7 @@ export class UpdateTransactionUseCase {
     }
 
     const seriesPatch =
-      input.applyToSeries && existing.installmentGroupId
-        ? pickSeriesPatch(input.patch)
-        : null;
+      input.applyToSeries && existing.installmentGroupId ? pickSeriesPatch(input.patch) : null;
 
     // Série sem campos compartilhados (ex.: só isPaid) cai no fluxo individual.
     if (seriesPatch && Object.keys(seriesPatch).length > 0) {

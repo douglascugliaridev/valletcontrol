@@ -274,7 +274,9 @@ describe('CreateTransactionsUseCase', () => {
   it('lançamento sem recorrência não recebe grupo', async () => {
     const repo = mockTransactionRepository();
     const input = makeValidInput();
-    repo.createMany.mockResolvedValue([{ ...input, id: 'tx-1', ownerId: 'user-1', createdAt: '', updatedAt: '' }]);
+    repo.createMany.mockResolvedValue([
+      { ...input, id: 'tx-1', ownerId: 'user-1', createdAt: '', updatedAt: '' },
+    ]);
     const useCase = new CreateTransactionsUseCase(repo, mockCardRepository());
 
     const result = await useCase.execute({ ownerId: 'user-1', input });

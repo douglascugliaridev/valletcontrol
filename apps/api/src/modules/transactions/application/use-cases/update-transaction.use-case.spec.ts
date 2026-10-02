@@ -155,9 +155,7 @@ describe('UpdateTransactionUseCase', () => {
     const repo = mockTransactionRepository();
     const existing = makeTransaction({ installmentGroupId: 'grp-1' });
     const updated = makeTransaction({ description: 'Celular', amountCents: 60_000 });
-    repo.findByIdAndOwner
-      .mockResolvedValueOnce(existing)
-      .mockResolvedValueOnce(updated);
+    repo.findByIdAndOwner.mockResolvedValueOnce(existing).mockResolvedValueOnce(updated);
     repo.updateManyByInstallmentGroupAndOwner.mockResolvedValue(4);
     const useCase = new UpdateTransactionUseCase(repo, mockCardRepository());
 

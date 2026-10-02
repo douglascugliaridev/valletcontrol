@@ -27,6 +27,7 @@ interface PrismaTransactionRow {
   year: number;
   isPaid: boolean;
   installmentGroupId: string | null;
+  recurringRuleId: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -53,6 +54,7 @@ function toDomain(row: PrismaTransactionRow): Transaction {
     year: row.year,
     isPaid: row.isPaid,
     installmentGroupId: row.installmentGroupId,
+    recurringRuleId: row.recurringRuleId,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -80,6 +82,7 @@ function toDbData(input: TransactionInput, ownerId: string): Prisma.TransactionC
     month: input.month,
     year: input.year,
     installmentGroupId: input.installmentGroupId ?? null,
+    recurringRuleId: input.recurringRuleId ?? null,
   };
 }
 
@@ -194,13 +197,109 @@ export class PrismaTransactionRepository implements TransactionRepositoryPort {
     return result.count;
   }
 
-  async deleteManyByInstallmentGroupAndOwner(
-    groupId: string,
-    ownerId: string,
-  ): Promise<number> {
+  async deleteManyByInstallmentGroupAndOwner(groupId: string, ownerId: string): Promise<number> {
     const result = await this.prisma.transaction.deleteMany({
       where: { installmentGroupId: groupId, ownerId },
     });
     return result.count;
+  }
+
+  /**
+   * Escopo "à frente": (year, month) posterior **ou igual** ao de referência.
+   *
+   * A comparação de ano e mês tem que ficar numa única cláusula do mesmo `AND`, não em
+   * `OR` solto: spreading junto de `recurringRuleId`/`ownerId` num objeto que já tem
+   * `OR` sobrescreveria as chaves vizinhas e o filtro viraria "dono **ou** regra",
+   * apagando transações de outros grupos.
+   */
+  private scopeFrom(fromYear: number, fromMonth: Month): Prisma.TransactionWhereInput {
+    return {
+      AND: [{ OR: [{ year: { gt: fromYear } }, { year: fromYear, month: { gte: fromMonth } }] }],
+    };
+  }
+
+  async findManyByRecurringRuleFrom(
+    ruleId: string,
+    ownerId: string,
+    fromYear: number,
+    fromMonth: Month,
+  ): Promise<Transaction[]> {
+    const rows = await this.prisma.transaction.findMany({
+      where: {
+        ownerId,
+        recurringRuleId: ruleId,
+        ...this.scopeFrom(fromYear, fromMonth),
+      },
+      orderBy: [{ year: 'asc' }, { month: 'asc' }],
+    });
+    return rows.map(toDomain);
+  }
+
+  async updateManyByRecurringRuleFrom(
+    ruleId: string,
+    ownerId: string,
+    fromYear: number,
+    fromMonth: Month,
+    patch: TransactionUpdate,
+    opts?: { protectPaid?: boolean },
+  ): Promise<number> {
+    const result = await this.prisma.transaction.updateMany({
+      where: {
+        ownerId,
+        recurringRuleId: ruleId,
+        ...(opts?.protectPaid ? { isPaid: false } : {}),
+        ...this.scopeFrom(fromYear, fromMonth),
+      },
+      data: toDbPatch(patch),
+    });
+    return result.count;
+  }
+
+  async deleteManyUnpaidByRecurringRuleFrom(
+    ruleId: string,
+    ownerId: string,
+    fromYear: number,
+    fromMonth: Month,
+  ): Promise<number> {
+    const result = await this.prisma.transaction.deleteMany({
+      where: {
+        ownerId,
+        recurringRuleId: ruleId,
+        isPaid: false,
+        ...this.scopeFrom(fromYear, fromMonth),
+      },
+    });
+    return result.count;
+  }
+
+  async countPaidByRecurringRuleFrom(
+    ruleId: string,
+    ownerId: string,
+    fromYear: number,
+    fromMonth: Month,
+  ): Promise<number> {
+    return this.prisma.transaction.count({
+      where: {
+        ownerId,
+        recurringRuleId: ruleId,
+        isPaid: true,
+        ...this.scopeFrom(fromYear, fromMonth),
+      },
+    });
+  }
+
+  async countTransactionsOfRule(ruleId: string, ownerId: string): Promise<number> {
+    return this.prisma.transaction.count({ where: { ownerId, recurringRuleId: ruleId } });
+  }
+
+  async findFirstUnpaidByRecurringRule(
+    ruleId: string,
+    ownerId: string,
+  ): Promise<Transaction | null> {
+    const row = await this.prisma.transaction.findFirst({
+      where: { ownerId, recurringRuleId: ruleId, isPaid: false },
+      orderBy: [{ year: 'asc' }, { month: 'asc' }],
+    });
+    return row ? toDomain(row) : null;
   }
 }
