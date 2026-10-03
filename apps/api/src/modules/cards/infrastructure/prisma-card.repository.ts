@@ -100,7 +100,9 @@ export class PrismaCardRepository implements CardRepositoryPort {
    * tem logo, o que devolve o cartão ao ícone genérico.
    */
   private async ensureBrandLogo(row: PrismaCardRow): Promise<PrismaCardRow> {
-    const expected = installBrandLogo(row.brand);
+    // O nome entra porque `CardBrand` não tem valor para um cartão como o Havan: ele é
+    // OTHERS, e sem o nome não há como saber qual logo usar.
+    const expected = installBrandLogo(row.brand, row.name);
     const current = row.logoUrl ?? null;
     if (current === expected) return row;
     return this.prisma.card.update({ where: { id: row.id }, data: { logoUrl: expected } });

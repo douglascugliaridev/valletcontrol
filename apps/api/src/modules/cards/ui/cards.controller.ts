@@ -21,7 +21,7 @@ import { CreateCardUseCase } from '../application/use-cases/create-card.use-case
 import { DeleteCardUseCase } from '../application/use-cases/delete-card.use-case';
 import { ListCardsUseCase } from '../application/use-cases/list-cards.use-case';
 import { UpdateCardUseCase } from '../application/use-cases/update-card.use-case';
-import { readBrandLogo } from '../infrastructure/uploads';
+import { BRAND_SLUGS, readBrandLogo } from '../infrastructure/uploads';
 
 /**
  * Controller REST de cartões — frame driver adapter (espelho do transactions).
@@ -56,17 +56,15 @@ export class CardsController {
   @Public()
   @Get('logos/:brand')
   @HttpCode(HttpStatus.OK)
-  async getBrandLogo(
-    @Param('brand') brand: string,
-    @Res() res: Response,
-  ): Promise<void> {
-    const allowedBrands = ['nubank', 'itaucard', 'havan'] as const;
+  async getBrandLogo(@Param('brand') brand: string, @Res() res: Response): Promise<void> {
+    // `BRAND_SLUGS` é a lista de slugs: manter uma cópia aqui era o que deixou o
+    // Havan fora — o controller o aceitava, mas o mapeamento interno não resolvia.
     const normalizedBrand = brand.toLowerCase();
-    if (!allowedBrands.includes(normalizedBrand as typeof allowedBrands[number])) {
+    if (!BRAND_SLUGS.includes(normalizedBrand as (typeof BRAND_SLUGS)[number])) {
       res.status(HttpStatus.NOT_FOUND).send('Brand not found');
       return;
     }
-    const fileBuffer = readBrandLogo(normalizedBrand as 'nubank' | 'itaucard');
+    const fileBuffer = readBrandLogo(normalizedBrand as (typeof BRAND_SLUGS)[number]);
     if (!fileBuffer) {
       res.status(HttpStatus.NOT_FOUND).send('Logo not found');
       return;
