@@ -65,27 +65,22 @@ export class MaterializeRecurringRuleUseCase {
       });
     }
 
-    const rule = await this.rules.create(ownerId, {
-      description: seed.description.trim(),
-      amountCents: seed.amountCents,
-      type: seed.type,
-      category: seed.category ?? 'contas_fixas',
-      startMonth: seed.month,
-      startYear: seed.year,
-      monthsAhead: input.months,
-      isActive: true,
-    });
-
-    const items: Transaction[] = [];
+    // Os lançamentos são montados e validados ANTES de qualquer escrita. A ordem
+    // importa: validando só depois de `rules.create`, uma semente inválida
+    // (categoria incoerente com o tipo, por exemplo) deixava a regra gravada e o
+    // grupo aparecia na tela com "0 lançamentos" — lixo que o usuário não criou.
+    const description = seed.description.trim();
+    const category = seed.category ?? 'contas_fixas';
+    const drafts: Transaction[] = [];
     for (let offset = 0; offset < input.months; offset += 1) {
       const { month, year } = addMonths(seed.month, seed.year, offset);
-      const item: Transaction = {
+      const draft: Transaction = {
         id: '',
         ownerId,
-        description: rule.description,
-        amountCents: rule.amountCents,
-        type: rule.type,
-        category: rule.category,
+        description,
+        amountCents: seed.amountCents,
+        type: seed.type,
+        category,
         paymentMethod: null,
         cardId: seed.cardId ?? null,
         dueDate: seed.dueDate,
@@ -94,15 +89,42 @@ export class MaterializeRecurringRuleUseCase {
         // Só o mês de referência herda o "pago" que o usuário marcou; os outros
         // começam pendentes, porque ainda não foram pagos.
         isPaid: offset === 0 ? (seed.isPaid ?? false) : false,
-        recurringRuleId: rule.id,
-        createdAt: rule.createdAt,
-        updatedAt: rule.updatedAt,
+        recurringRuleId: null,
+        createdAt: '',
+        updatedAt: '',
       };
-      validateTransactionInput(item);
-      items.push(item);
+      validateTransactionInput(draft);
+      drafts.push(draft);
     }
 
-    const created = await this.transactions.createMany(ownerId, items);
+    const rule = await this.rules.create(ownerId, {
+      description,
+      amountCents: seed.amountCents,
+      type: seed.type,
+      category,
+      startMonth: seed.month,
+      startYear: seed.year,
+      monthsAhead: input.months,
+      isActive: true,
+    });
+
+    const items = drafts.map((draft) => ({
+      ...draft,
+      recurringRuleId: rule.id,
+      createdAt: rule.createdAt,
+      updatedAt: rule.updatedAt,
+    }));
+
+    let created: Transaction[];
+    try {
+      created = await this.transactions.createMany(ownerId, items);
+    } catch (err) {
+      // Rede de segurança: se a gravação falhar, a regra sozinha na tela seria um
+      // grupo que não existe. Devolve o estado anterior em vez de deixar o resto.
+      await this.rules.deleteByIdAndOwner(rule.id, ownerId);
+      throw err;
+    }
+
     return {
       rule,
       transactions: [...created].sort((a, b) =>

@@ -6,7 +6,6 @@ import {
   CATEGORY_LABELS,
   MAX_MONTHS_AHEAD,
   MONTH_NAMES_LONG,
-  TRANSACTION_TYPE_LABELS,
 } from '@walletcontrol/shared';
 import { useDeleteRecurringRule, useExtendRecurringRule, useRecurringRules } from '@/lib/hooks';
 import { ApiError, api } from '@/lib/api';
@@ -22,8 +21,10 @@ import {
   Spinner,
 } from '@/components/ui';
 import { Plus, Repeat, Trash2 } from 'lucide-react';
+import { RecurringRuleCreateDialog } from '@/components/recurring-rule-create-dialog';
 import { useEffect, useState } from 'react';
 import { formatCents } from '@/lib/format';
+import { typeTone } from '@/lib/display';
 
 interface MonthRef {
   month: Month;
@@ -65,6 +66,7 @@ export function RecurringRulesManager() {
   const [pendingDelete, setPendingDelete] = useState<RecurringRule | null>(null);
   const [extending, setExtending] = useState<RecurringRule | null>(null);
   const [extendMonths, setExtendMonths] = useState('12');
+  const [creating, setCreating] = useState(false);
 
   /**
    * Quantas transações cada grupo tem, e o primeiro/último mês.
@@ -109,6 +111,14 @@ export function RecurringRulesManager() {
     setFormError(null);
     setExtending(rule);
     setExtendMonths('12');
+  };
+
+  const confirmCreated = (created: number) => {
+    setNotice(
+      created > 0
+        ? `Recorrência criada com ${created} lançamento(s) no relatório.`
+        : 'Recorrência criada, sem lançamentos no período escolhido.',
+    );
   };
 
   const submitExtend = async () => {
@@ -156,6 +166,78 @@ export function RecurringRulesManager() {
     }
   };
 
+  /**
+   * Receitas e despesas em blocos próprios.
+   *
+   * Uma lista única fazia o salário aparecer como se fosse uma conta a pagar: o número
+   * ao lado é o mesmo valor, mas o sinal é o oposto. Separar por tipo evita ler "5.000,00"
+   * na linha do salário e somar junto das despesas.
+   */
+  const incomes = (rules ?? []).filter((r) => r.type === 'receita');
+  const expenses = (rules ?? []).filter((r) => r.type !== 'receita');
+
+  const renderRow = (rule: RecurringRule) => (
+    <div key={rule.id} className="flex items-center gap-3 px-5 py-3">
+      <div className="flex min-w-0 flex-1 flex-col">
+        <span className="truncate text-sm font-medium">{rule.description}</span>
+        <span className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+          <Badge tone="neutral">{CATEGORY_LABELS[rule.category]}</Badge>
+          <span>
+            desde {MONTH_NAMES_LONG[rule.startMonth - 1]} {rule.startYear}
+          </span>
+          <Badge tone="neutral">{counts.get(rule.id)?.total ?? 0} lançamentos</Badge>
+          {(() => {
+            const c = counts.get(rule.id);
+            if (c?.first && c.last) {
+              return <span>{rangeLabel(c.first, c.last)}</span>;
+            }
+            return <span>{rule.monthsAhead ?? 0}m configurados</span>;
+          })()}
+        </span>
+      </div>
+      {/* `typeTone` é a convenção do app (`+ ` entra, `- ` sai), o mesmo sinal da
+          tabela do dashboard. Sem ele o valor do salário se lia como conta a pagar. */}
+      <div className="min-w-0 shrink text-sm font-semibold tabular-nums text-foreground sm:shrink-0">
+        {typeTone[rule.type].value}
+        {formatCents(rule.amountCents)}
+      </div>
+      <div className="flex shrink-0 gap-1">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => openExtend(rule)}
+          aria-label={`Estender ${rule.description}`}
+        >
+          <Plus className="size-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="text-destructive"
+          onClick={() => setPendingDelete(rule)}
+          aria-label={`Cancelar ${rule.description}`}
+        >
+          <Trash2 className="size-4" />
+        </Button>
+      </div>
+    </div>
+  );
+
+  const renderGroup = (title: string, group: RecurringRule[]) => {
+    if (group.length === 0) return null;
+    return (
+      <section key={title} className="border-t border-border first:border-t-0">
+        <h3 className="flex items-center gap-2 bg-muted/50 px-5 py-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          {title}
+          <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] tabular-nums">
+            {group.length}
+          </span>
+        </h3>
+        <div className="divide-y divide-border">{group.map(renderRow)}</div>
+      </section>
+    );
+  };
+
   return (
     <Card>
       <CardHeader className="flex-row items-center justify-between">
@@ -163,12 +245,13 @@ export function RecurringRulesManager() {
           <Repeat className="size-4 text-muted-foreground" />
           <CardTitle>Regras recorrentes</CardTitle>
         </div>
-        <p className="text-xs text-muted-foreground">
-          As contas fixas nascem em “Nova transação”, na categoria “Contas Fixas”.
-        </p>
+        <Button size="sm" onClick={() => setCreating(true)}>
+          <Plus className="size-4" />
+          Nova recorrência
+        </Button>
       </CardHeader>
 
-      <div className="divide-y divide-border border-t border-border">
+      <div className="border-t border-border">
         {isLoading && !rules ? (
           <div className="p-6 text-center text-sm text-muted-foreground">
             <Spinner className="mx-auto size-5" />
@@ -184,74 +267,36 @@ export function RecurringRulesManager() {
               </p>
             )}
             <p className="p-6 text-center text-sm text-muted-foreground">
-              Nenhuma conta fixa. Crie uma pelo botão “Nova transação”, escolhendo a categoria
-              “Contas Fixas” e preenchendo “Quantidade de meses”.
+              Nenhuma recorrência. Use “Nova recorrência” para criar um salário, uma conta que se
+              repete ou qualquer lançamento mensal.
             </p>
           </div>
         ) : (
           <div className="flex flex-col">
             {notice && (
               <p
-                className="mx-5 mb-3 rounded-lg bg-primary/10 px-3 py-2 text-sm text-foreground"
+                className="mx-5 mt-3 rounded-lg bg-primary/10 px-3 py-2 text-sm text-foreground"
                 role="status"
               >
                 {notice}
               </p>
             )}
-            {(rules ?? []).map((rule) => (
-              <div key={rule.id} className="flex items-center gap-3 px-5 py-3">
-                <div className="flex min-w-0 flex-1 flex-col">
-                  <span className="truncate text-sm font-medium">{rule.description}</span>
-                  <span className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-                    <Badge tone={rule.type === 'receita' ? 'success' : 'danger'}>
-                      {TRANSACTION_TYPE_LABELS[rule.type]}
-                    </Badge>
-                    <Badge tone="neutral">{CATEGORY_LABELS[rule.category]}</Badge>
-                    <span>
-                      desde {MONTH_NAMES_LONG[rule.startMonth - 1]} {rule.startYear}
-                    </span>
-                    <Badge tone="neutral">{counts.get(rule.id)?.total ?? 0} lançamentos</Badge>
-                    {(() => {
-                      const c = counts.get(rule.id);
-                      if (c?.first && c.last) {
-                        return <span>{rangeLabel(c.first, c.last)}</span>;
-                      }
-                      return <span>{rule.monthsAhead ?? 0}m configurados</span>;
-                    })()}
-                  </span>
-                </div>
-                <div className="min-w-0 shrink text-sm font-semibold tabular-nums text-foreground sm:shrink-0">
-                  {formatCents(rule.amountCents)}
-                </div>
-                <div className="flex shrink-0 gap-1">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => openExtend(rule)}
-                    aria-label="Estender conta fixa"
-                  >
-                    <Plus className="size-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="text-destructive"
-                    onClick={() => setPendingDelete(rule)}
-                    aria-label="Excluir conta fixa"
-                  >
-                    <Trash2 className="size-4" />
-                  </Button>
-                </div>
-              </div>
-            ))}
+            {renderGroup('Receitas', incomes)}
+            {renderGroup('Despesas', expenses)}
           </div>
         )}
       </div>
 
+      <RecurringRuleCreateDialog
+        open={creating}
+        onClose={() => setCreating(false)}
+        onCreated={confirmCreated}
+      />
+
       <Modal
         open={extending !== null}
         onClose={() => setExtending(null)}
-        title="Estender conta fixa"
+        title="Estender recorrência"
       >
         <div className="flex flex-col gap-4">
           <p className="text-sm text-muted-foreground">
@@ -292,11 +337,11 @@ export function RecurringRulesManager() {
       <Modal
         open={pendingDelete !== null}
         onClose={() => setPendingDelete(null)}
-        title="Cancelar conta fixa"
+        title="Cancelar recorrência"
       >
         <div className="flex flex-col gap-3">
           <p className="text-sm">
-            Cancelar “{pendingDelete?.description}”
+            Cancelar a recorrência “{pendingDelete?.description}”
             {pendingDelete ? ` (${formatCents(pendingDelete.amountCents)})` : ''}?
           </p>
           <ul className="flex list-disc flex-col gap-1 pl-5 text-sm text-muted-foreground">
@@ -308,7 +353,7 @@ export function RecurringRulesManager() {
               Os lançamentos <strong className="text-foreground">já pagos</strong> permanecem no
               relatório como lançamentos comuns — apagar um pagamento é outra operação.
             </li>
-            <li>A conta deixa de se repetir nos meses seguintes.</li>
+            <li>A recorrência deixa de se repetir nos meses seguintes.</li>
           </ul>
           {formError && (
             <p

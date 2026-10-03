@@ -291,6 +291,7 @@ export default function DashboardPage() {
               transactions={report?.transactions}
               cards={cards}
               loading={isLoading}
+              typeFilter={filters.type}
               onTogglePaid={handleTogglePaid}
               onEdit={openEdit}
               onDelete={(t) => requestScopedAction('excluir', t)}

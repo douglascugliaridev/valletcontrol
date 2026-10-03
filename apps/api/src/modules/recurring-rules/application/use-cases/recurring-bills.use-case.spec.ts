@@ -203,6 +203,76 @@ describe('MaterializeRecurringRuleUseCase', () => {
     expect(result.transactions.map((t) => `${t.year}-${t.month}`)).toEqual(['2026-12', '2027-1']);
   });
 
+  it('materializa receita recorrente — um salário não tem caminho no formulário do dashboard', async () => {
+    const rules = ruleRepo(makeRule());
+    const txs = txRepo();
+    const result = await new MaterializeRecurringRuleUseCase(
+      rules as unknown as RecurringRuleRepositoryPort,
+      txs as unknown as TransactionRepositoryPort,
+      cardRepo as unknown as CardRepositoryPort,
+    ).execute({
+      ownerId,
+      months: 4,
+      seed: {
+        ...seed(),
+        description: 'Salário',
+        type: TransactionType.INCOME,
+        category: Category.INCOME,
+        month: 10 as Month,
+        year: 2026,
+        isPaid: true,
+      },
+    });
+
+    expect(result.rule.type).toBe(TransactionType.INCOME);
+    expect(result.rule.monthsAhead).toBe(4);
+    expect(result.transactions).toHaveLength(4);
+    // os quatro meses são receita, e só o de referência herda o "recebido"
+    expect(result.transactions.every((t) => t.type === TransactionType.INCOME)).toBe(true);
+    expect(result.transactions.map((t) => t.isPaid)).toEqual([true, false, false, false]);
+  });
+
+  it('semente inválida não deixa regra órfã na lista', async () => {
+    const rules = ruleRepo(null);
+    const txs = txRepo();
+    // receita com categoria de despesa: o domínio recusa com CATEGORY_TYPE_MISMATCH
+    await expect(
+      new MaterializeRecurringRuleUseCase(
+        rules as unknown as RecurringRuleRepositoryPort,
+        txs as unknown as TransactionRepositoryPort,
+        cardRepo as unknown as CardRepositoryPort,
+      ).execute({
+        ownerId,
+        months: 3,
+        seed: {
+          ...seed(),
+          type: TransactionType.INCOME,
+          category: Category.FIXED_EXPENSES,
+        },
+      }),
+    ).rejects.toThrow();
+
+    // A regra não pode ter sido criada: validando depois do `rules.create`, ela
+    // aparecia em Configurações com "0 lançamentos".
+    expect(rules.create).not.toHaveBeenCalled();
+  });
+
+  it('falha ao gravar os lançamentos remove a regra recem-criada', async () => {
+    const rules = ruleRepo(makeRule());
+    const txs = txRepo();
+    txs.createMany.mockRejectedValueOnce(new Error('banco indisponível'));
+
+    await expect(
+      new MaterializeRecurringRuleUseCase(
+        rules as unknown as RecurringRuleRepositoryPort,
+        txs as unknown as TransactionRepositoryPort,
+        cardRepo as unknown as CardRepositoryPort,
+      ).execute({ ownerId, months: 3, seed: seed() }),
+    ).rejects.toThrow('banco indisponível');
+
+    expect(rules.deleteByIdAndOwner).toHaveBeenCalled();
+  });
+
   it('rejeita despesa com cartão inconsistente com a bandeira', async () => {
     const rules = ruleRepo(null);
     const txs = txRepo();
